@@ -4,11 +4,23 @@ import KeyboardShortcuts
 final class HotkeyManager {
     private weak var appState: AppState?
 
+    // Track modifier-only state to detect press vs release
+    private var isControlOnlyActive = false
+    private var isOptionOnlyActive = false
+    private var flagsMonitor: Any?
+
     func configure(appState: AppState) {
         self.appState = appState
         setupToggleLaser()
         setupArrowDraw()
         setupFreehandDraw()
+        setupModifierOnlyShortcuts()
+    }
+
+    deinit {
+        if let monitor = flagsMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
     }
 
     // MARK: - Toggle Laser
@@ -19,7 +31,7 @@ final class HotkeyManager {
         }
     }
 
-    // MARK: - Arrow Draw (press-and-hold)
+    // MARK: - Arrow Draw (press-and-hold via KeyboardShortcuts)
 
     private func setupArrowDraw() {
         KeyboardShortcuts.onKeyDown(for: .drawArrow) { [weak self] in
@@ -35,7 +47,7 @@ final class HotkeyManager {
         }
     }
 
-    // MARK: - Freehand Draw (press-and-hold, works independently of laser)
+    // MARK: - Freehand Draw (press-and-hold via KeyboardShortcuts)
 
     private func setupFreehandDraw() {
         KeyboardShortcuts.onKeyDown(for: .drawFreehand) { [weak self] in
@@ -48,6 +60,54 @@ final class HotkeyManager {
             guard let self, let appState = self.appState else { return }
             guard appState.isFreehandDrawing else { return }
             appState.endFreehandDraw()
+        }
+    }
+
+    // MARK: - Modifier-only shortcuts (Option alone = freehand, Ctrl alone = arrow)
+    //
+    // This runs in parallel with KeyboardShortcuts: if the user has configured a
+    // letter-based shortcut it still works. If they press only Option or only Ctrl,
+    // this takes over.
+
+    private func setupModifierOnlyShortcuts() {
+        flagsMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            self?.handleFlagsChanged(event)
+        }
+    }
+
+    private func handleFlagsChanged(_ event: NSEvent) {
+        guard let appState else { return }
+
+        // Isolate only the standard modifiers (ignore Fn, CapsLock, etc.)
+        let active = event.modifierFlags.intersection([.option, .control, .command, .shift])
+
+        // --- Ctrl alone → Arrow ---
+        let ctrlOnly = active == .control
+        if ctrlOnly && !isControlOnlyActive {
+            isControlOnlyActive = true
+            // Only start if laser is active and not already drawing
+            if appState.isLaserActive && !appState.isArrowDrawing {
+                appState.startArrowDraw()
+            }
+        } else if !ctrlOnly && isControlOnlyActive {
+            isControlOnlyActive = false
+            if appState.isArrowDrawing {
+                appState.endArrowDraw()
+            }
+        }
+
+        // --- Option alone → Freehand ---
+        let optionOnly = active == .option
+        if optionOnly && !isOptionOnlyActive {
+            isOptionOnlyActive = true
+            if !appState.isFreehandDrawing {
+                appState.startFreehandDraw()
+            }
+        } else if !optionOnly && isOptionOnlyActive {
+            isOptionOnlyActive = false
+            if appState.isFreehandDrawing {
+                appState.endFreehandDraw()
+            }
         }
     }
 }
