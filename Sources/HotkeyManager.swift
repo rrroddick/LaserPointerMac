@@ -18,9 +18,7 @@ final class HotkeyManager {
     }
 
     deinit {
-        if let monitor = flagsMonitor {
-            NSEvent.removeMonitor(monitor)
-        }
+        (flagsMonitor as? Timer)?.invalidate()
     }
 
     // MARK: - Toggle Laser
@@ -63,25 +61,25 @@ final class HotkeyManager {
         }
     }
 
-    // MARK: - Modifier-only shortcuts (Option alone = freehand, Ctrl alone = arrow)
+    // MARK: - Modifier-only shortcuts via polling (Option alone = freehand, Ctrl alone = arrow)
     //
-    // This runs in parallel with KeyboardShortcuts: if the user has configured a
-    // letter-based shortcut it still works. If they press only Option or only Ctrl,
-    // this takes over.
+    // NSEvent.addGlobalMonitorForEvents is unreliable for flagsChanged on macOS 14+.
+    // Instead, we poll NSEvent.modifierFlags at 60fps — it reads hardware state directly
+    // and works regardless of which app is frontmost, with no extra permissions needed.
 
     private func setupModifierOnlyShortcuts() {
-        flagsMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            self?.handleFlagsChanged(event)
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            DispatchQueue.main.async { self?.checkModifierFlags() }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        flagsMonitor = timer
     }
 
-    private func handleFlagsChanged(_ event: NSEvent) {
+    private func checkModifierFlags() {
         guard let appState else { return }
+        let active = NSEvent.modifierFlags.intersection([.option, .control, .command, .shift])
 
-        // Isolate only the standard modifiers (ignore Fn, CapsLock, etc.)
-        let active = event.modifierFlags.intersection([.option, .control, .command, .shift])
-
-        // --- Ctrl alone → Arrow ---
+        // Ctrl alone → Arrow
         let ctrlOnly = active == .control
         if ctrlOnly && !isControlOnlyActive {
             isControlOnlyActive = true
@@ -95,7 +93,7 @@ final class HotkeyManager {
             }
         }
 
-        // --- Option alone → Freehand ---
+        // Option alone → Freehand
         let optionOnly = active == .option
         if optionOnly && !isOptionOnlyActive {
             isOptionOnlyActive = true
