@@ -99,7 +99,11 @@ final class HotkeyManager {
                 if appState.isArrowDrawing { appState.endArrowDraw() }
             }
         } else {
-            isControlOnlyActive = false
+            // Shortcut now configured — stop any draw that was started via modifier-only
+            if isControlOnlyActive {
+                isControlOnlyActive = false
+                if appState.isArrowDrawing { appState.endArrowDraw() }
+            }
         }
 
         // Option alone → Freehand (only when no custom shortcut is configured for drawFreehand)
@@ -116,7 +120,11 @@ final class HotkeyManager {
                 if appState.isFreehandDrawing { appState.endFreehandDraw() }
             }
         } else {
-            isOptionOnlyActive = false
+            // Shortcut now configured — stop any draw that was started via modifier-only
+            if isOptionOnlyActive {
+                isOptionOnlyActive = false
+                if appState.isFreehandDrawing { appState.endFreehandDraw() }
+            }
         }
     }
 }
