@@ -85,8 +85,7 @@ final class HotkeyManager {
         let ctrlOnly = active == .control
         if ctrlOnly && !isControlOnlyActive {
             isControlOnlyActive = true
-            // Only start if laser is active and not already drawing
-            if appState.isLaserActive && !appState.isArrowDrawing {
+            if !appState.isArrowDrawing {
                 appState.startArrowDraw()
             }
         } else if !ctrlOnly && isControlOnlyActive {
