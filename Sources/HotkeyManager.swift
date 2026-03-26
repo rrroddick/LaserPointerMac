@@ -78,7 +78,6 @@ final class HotkeyManager {
     private func checkModifierFlags() {
         guard let appState else { return }
         guard appState.isLaserActive else {
-            // Laser off — reset states without triggering any draw action
             isControlOnlyActive = false
             isOptionOnlyActive = false
             return
@@ -86,34 +85,38 @@ final class HotkeyManager {
 
         let active = NSEvent.modifierFlags.intersection([.option, .control, .command, .shift])
 
-        // Ctrl alone → Arrow
-        let ctrlOnly = active == .control
-        if ctrlOnly && !isControlOnlyActive {
-            // Modifier just pressed
-            isControlOnlyActive = true
-            if !appState.isArrowDrawing { appState.startArrowDraw() }
-        } else if ctrlOnly && isControlOnlyActive && !appState.isArrowDrawing {
-            // Still holding Ctrl, but a configured shortcut's onKeyUp stopped the arrow → restart
-            appState.startArrowDraw()
-        } else if !ctrlOnly && isControlOnlyActive {
-            // Modifier released
+        // Ctrl alone → Arrow (only when no custom shortcut is configured for drawArrow)
+        let arrowShortcutConfigured = KeyboardShortcuts.getShortcut(for: .drawArrow) != nil
+        if !arrowShortcutConfigured {
+            let ctrlOnly = active == .control
+            if ctrlOnly && !isControlOnlyActive {
+                isControlOnlyActive = true
+                if !appState.isArrowDrawing { appState.startArrowDraw() }
+            } else if ctrlOnly && isControlOnlyActive && !appState.isArrowDrawing {
+                appState.startArrowDraw()
+            } else if !ctrlOnly && isControlOnlyActive {
+                isControlOnlyActive = false
+                if appState.isArrowDrawing { appState.endArrowDraw() }
+            }
+        } else {
             isControlOnlyActive = false
-            if appState.isArrowDrawing { appState.endArrowDraw() }
         }
 
-        // Option alone → Freehand
-        let optionOnly = active == .option
-        if optionOnly && !isOptionOnlyActive {
-            // Modifier just pressed
-            isOptionOnlyActive = true
-            if !appState.isFreehandDrawing { appState.startFreehandDraw() }
-        } else if optionOnly && isOptionOnlyActive && !appState.isFreehandDrawing {
-            // Still holding Option, but a configured shortcut's onKeyUp stopped the draw → restart
-            appState.startFreehandDraw()
-        } else if !optionOnly && isOptionOnlyActive {
-            // Modifier released
+        // Option alone → Freehand (only when no custom shortcut is configured for drawFreehand)
+        let freehandShortcutConfigured = KeyboardShortcuts.getShortcut(for: .drawFreehand) != nil
+        if !freehandShortcutConfigured {
+            let optionOnly = active == .option
+            if optionOnly && !isOptionOnlyActive {
+                isOptionOnlyActive = true
+                if !appState.isFreehandDrawing { appState.startFreehandDraw() }
+            } else if optionOnly && isOptionOnlyActive && !appState.isFreehandDrawing {
+                appState.startFreehandDraw()
+            } else if !optionOnly && isOptionOnlyActive {
+                isOptionOnlyActive = false
+                if appState.isFreehandDrawing { appState.endFreehandDraw() }
+            }
+        } else {
             isOptionOnlyActive = false
-            if appState.isFreehandDrawing { appState.endFreehandDraw() }
         }
     }
 }
