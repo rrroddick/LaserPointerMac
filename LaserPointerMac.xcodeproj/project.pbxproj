@@ -11,14 +11,14 @@
 		AA0002000000000000000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0002000000000000000001 /* AppDelegate.swift */; };
 		AA0003000000000000000001 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0003000000000000000001 /* AppState.swift */; };
 		AA0004000000000000000001 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0004000000000000000001 /* SettingsStore.swift */; };
-		AA0011000000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB0012000000000000000001 /* Assets.xcassets */; };
-		AA0012000000000000000001 /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = BB0013000000000000000001 /* AppIcon.icns */; };
 		AA0005000000000000000001 /* ShortcutNames.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0005000000000000000001 /* ShortcutNames.swift */; };
 		AA0006000000000000000001 /* HotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0006000000000000000001 /* HotkeyManager.swift */; };
 		AA0007000000000000000001 /* MouseTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0007000000000000000001 /* MouseTracker.swift */; };
 		AA0008000000000000000001 /* OverlayWindowManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0008000000000000000001 /* OverlayWindowManager.swift */; };
 		AA0009000000000000000001 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0009000000000000000001 /* SettingsView.swift */; };
 		AA0010000000000000000001 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = DD0002000000000000000001 /* KeyboardShortcuts */; };
+		AA0011000000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB0012000000000000000001 /* Assets.xcassets */; };
+		AA0012000000000000000001 /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = BB0013000000000000000001 /* AppIcon.icns */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,10 +31,12 @@
 		BB0007000000000000000001 /* MouseTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MouseTracker.swift; sourceTree = "<group>"; };
 		BB0008000000000000000001 /* OverlayWindowManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayWindowManager.swift; sourceTree = "<group>"; };
 		BB0009000000000000000001 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		BB0012000000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		BB0013000000000000000001 /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		BB0010000000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		BB0011000000000000000001 /* LaserPointerMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LaserPointerMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BB0012000000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		BB0013000000000000000001 /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
+		CA6707FB2F74331C00EBF503 /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
+		CA6707FC2F74331C00EBF503 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -52,6 +54,8 @@
 		EE0001000000000000000001 = {
 			isa = PBXGroup;
 			children = (
+				CA6707FB2F74331C00EBF503 /* LICENSE */,
+				CA6707FC2F74331C00EBF503 /* README.md */,
 				EE0002000000000000000001 /* Sources */,
 				EE0003000000000000000001 /* Products */,
 			);
@@ -138,6 +142,18 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		CC0003000000000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA0011000000000000000001 /* Assets.xcassets in Resources */,
+				AA0012000000000000000001 /* AppIcon.icns in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		CC0001000000000000000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -156,18 +172,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXResourcesBuildPhase section */
-		CC0003000000000000000001 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				AA0011000000000000000001 /* Assets.xcassets in Resources */,
-				AA0012000000000000000001 /* AppIcon.icns in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXResourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
 		220001000000000000000001 /* Debug */ = {

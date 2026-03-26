@@ -18,6 +18,12 @@ struct SettingsView: View {
                     Label("Arrow", systemImage: "arrow.right")
                 }
 
+            FreehandSettingsTab()
+                .environmentObject(settings)
+                .tabItem {
+                    Label("Freehand", systemImage: "scribble")
+                }
+
             ShortcutsSettingsTab()
                 .tabItem {
                     Label("Shortcuts", systemImage: "keyboard")
@@ -118,6 +124,46 @@ struct ArrowSettingsTab: View {
     }
 }
 
+// MARK: - Freehand Settings Tab
+
+struct FreehandSettingsTab: View {
+    @EnvironmentObject var settings: SettingsStore
+    @State private var selectedColor: Color = Color(red: 0, green: 0.96, blue: 0.08)
+
+    var body: some View {
+        Form {
+            Section("Freehand Appearance") {
+                HStack {
+                    Text("Color")
+                    Spacer()
+                    ColorPicker("", selection: $selectedColor, supportsOpacity: false)
+                        .labelsHidden()
+                        .onChange(of: selectedColor) { _, newValue in
+                            settings.freehandColor = newValue
+                        }
+                }
+
+                LabeledSlider(label: "Line Width", value: $settings.freehandLineWidth, range: 1...20, format: "%.1f pt")
+                LabeledSlider(label: "Opacity", value: $settings.freehandOpacity, range: 0.1...1.0, format: "%.0f%%", multiplier: 100)
+            }
+
+            Section("Fade Out") {
+                LabeledSlider(label: "Fade Duration", value: $settings.freehandFadeDuration, range: 0.3...5.0, format: "%.1f s")
+            }
+
+            Section("Usage") {
+                Text("Hold the freehand shortcut to draw freely on screen. The drawing fades out automatically when you release the key. Works independently of the laser.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .onAppear {
+            selectedColor = settings.freehandColor
+        }
+    }
+}
+
 // MARK: - Shortcuts Settings Tab
 
 struct ShortcutsSettingsTab: View {
@@ -134,6 +180,12 @@ struct ShortcutsSettingsTab: View {
                     Text("Draw Arrow (hold)")
                     Spacer()
                     KeyboardShortcuts.Recorder("", name: .drawArrow)
+                }
+
+                HStack {
+                    Text("Draw Freehand (hold)")
+                    Spacer()
+                    KeyboardShortcuts.Recorder("", name: .drawFreehand)
                 }
             }
 

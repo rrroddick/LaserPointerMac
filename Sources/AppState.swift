@@ -6,6 +6,7 @@ final class AppState: ObservableObject {
 
     @Published private(set) var isLaserActive = false
     @Published private(set) var isArrowDrawing = false
+    @Published private(set) var isFreehandDrawing = false
     @Published var arrowStartPoint: CGPoint? = nil
     @Published var currentMousePosition: CGPoint = .zero
 
@@ -40,6 +41,7 @@ final class AppState: ObservableObject {
             mouseTracker.stopTracking()
             overlayManager.hideOverlay()
             endArrowDraw()
+            endFreehandDraw()
         }
     }
 
@@ -56,5 +58,16 @@ final class AppState: ObservableObject {
         arrowStartPoint = nil
         overlayManager.setArrowDrawing(false)
         overlayManager.setArrowStartPoint(nil)
+    }
+
+    func startFreehandDraw() {
+        isFreehandDrawing = true
+        overlayManager.startFreehandDraw()
+    }
+
+    func endFreehandDraw() {
+        guard isFreehandDrawing else { return }
+        isFreehandDrawing = false
+        overlayManager.endFreehandDraw()
     }
 }

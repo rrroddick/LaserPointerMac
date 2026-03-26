@@ -8,6 +8,7 @@ final class HotkeyManager {
         self.appState = appState
         setupToggleLaser()
         setupArrowDraw()
+        setupFreehandDraw()
     }
 
     // MARK: - Toggle Laser
@@ -19,14 +20,6 @@ final class HotkeyManager {
     }
 
     // MARK: - Arrow Draw (press-and-hold)
-    //
-    // Uses KeyboardShortcuts.onKeyDown / onKeyUp to detect hold behavior.
-    // The Carbon hot key system fires kEventHotKeyPressed on press and
-    // kEventHotKeyReleased when either the key or modifier is released,
-    // which gives us correct hold-to-draw semantics.
-    //
-    // This approach automatically handles shortcut changes made via the
-    // KeyboardShortcuts.Recorder in settings.
 
     private func setupArrowDraw() {
         KeyboardShortcuts.onKeyDown(for: .drawArrow) { [weak self] in
@@ -39,6 +32,22 @@ final class HotkeyManager {
             guard let self, let appState = self.appState else { return }
             guard appState.isArrowDrawing else { return }
             appState.endArrowDraw()
+        }
+    }
+
+    // MARK: - Freehand Draw (press-and-hold, works independently of laser)
+
+    private func setupFreehandDraw() {
+        KeyboardShortcuts.onKeyDown(for: .drawFreehand) { [weak self] in
+            guard let self, let appState = self.appState else { return }
+            guard !appState.isFreehandDrawing else { return }
+            appState.startFreehandDraw()
+        }
+
+        KeyboardShortcuts.onKeyUp(for: .drawFreehand) { [weak self] in
+            guard let self, let appState = self.appState else { return }
+            guard appState.isFreehandDrawing else { return }
+            appState.endFreehandDraw()
         }
     }
 }

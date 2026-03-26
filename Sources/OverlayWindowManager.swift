@@ -15,7 +15,6 @@ final class OverlayWindowManager {
             overlayWindows[screen] = window
         }
 
-        // Watch for screen changes
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(screensChanged),
@@ -40,6 +39,9 @@ final class OverlayWindowManager {
         currentMousePosition = position
         for (_, window) in overlayWindows {
             window.overlayView.mousePosition = position
+            if window.overlayView.isFreehandDrawing {
+                window.overlayView.addFreehandPoint(position)
+            }
         }
     }
 
@@ -57,8 +59,35 @@ final class OverlayWindowManager {
         }
     }
 
+    // MARK: - Freehand
+
+    func startFreehandDraw() {
+        // Ensure overlay windows exist even if laser is not currently active
+        if overlayWindows.isEmpty {
+            for screen in NSScreen.screens {
+                let window = OverlayWindow(screen: screen)
+                window.orderFrontRegardless()
+                overlayWindows[screen] = window
+            }
+        }
+        for (_, window) in overlayWindows {
+            window.overlayView.startFreehandDraw()
+        }
+    }
+
+    func endFreehandDraw() {
+        for (_, window) in overlayWindows {
+            window.overlayView.endFreehandDraw()
+        }
+    }
+
+    func addFreehandPoint(_ point: CGPoint) {
+        for (_, window) in overlayWindows {
+            window.overlayView.addFreehandPoint(point)
+        }
+    }
+
     @objc private func screensChanged() {
-        // Rebuild overlays for new screen configuration
         showOverlay()
         updateMousePosition(currentMousePosition)
         setArrowDrawing(isArrowDrawing)
@@ -82,7 +111,6 @@ final class OverlayWindow: NSPanel {
             defer: false
         )
 
-        // Use a high window level suitable for overlays
         self.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.overlayWindow)))
         self.isOpaque = false
         self.backgroundColor = .clear
@@ -94,7 +122,7 @@ final class OverlayWindow: NSPanel {
     }
 }
 
-// MARK: - Overlay View (renders laser and arrow)
+// MARK: - Overlay View (renders laser, arrow, and freehand)
 
 final class OverlayView: NSView {
     var mousePosition: CGPoint = .zero {
@@ -108,6 +136,14 @@ final class OverlayView: NSView {
     var arrowStartPoint: CGPoint? = nil {
         didSet { needsDisplay = true }
     }
+
+    // MARK: Freehand State
+    private(set) var isFreehandDrawing: Bool = false
+    private var freehandPoints: [CGPoint] = []
+    private var freehandAlpha: CGFloat = 1.0
+    private var isFading: Bool = false
+    private var fadeStartTime: CFTimeInterval = 0
+    private var fadeDuration: CFTimeInterval = 1.0
 
     private let settings = SettingsStore.shared
     private var displayLink: CVDisplayLink?
@@ -128,7 +164,33 @@ final class OverlayView: NSView {
         stopDisplayLink()
     }
 
-    // MARK: - Display Link for smooth animation
+    // MARK: - Freehand Public API
+
+    func startFreehandDraw() {
+        // Cancel any ongoing fade first
+        isFading = false
+        freehandAlpha = 1.0
+        freehandPoints = []
+        isFreehandDrawing = true
+        needsDisplay = true
+    }
+
+    func addFreehandPoint(_ screenPoint: CGPoint) {
+        guard isFreehandDrawing else { return }
+        freehandPoints.append(screenPoint)
+        needsDisplay = true
+    }
+
+    func endFreehandDraw() {
+        isFreehandDrawing = false
+        guard !freehandPoints.isEmpty else { return }
+        fadeDuration = settings.freehandFadeDuration
+        freehandAlpha = 1.0
+        fadeStartTime = CACurrentMediaTime()
+        isFading = true
+    }
+
+    // MARK: - Display Link
 
     private func startDisplayLink() {
         CVDisplayLinkCreateWithActiveCGDisplays(&displayLink)
@@ -139,6 +201,19 @@ final class OverlayView: NSView {
             DispatchQueue.main.async {
                 view.animationPhase += 0.03
                 if view.animationPhase > .pi * 2 { view.animationPhase -= .pi * 2 }
+
+                // Update freehand fade
+                if view.isFading {
+                    let elapsed = CACurrentMediaTime() - view.fadeStartTime
+                    let progress = min(elapsed / view.fadeDuration, 1.0)
+                    view.freehandAlpha = CGFloat(1.0 - progress)
+                    if progress >= 1.0 {
+                        view.isFading = false
+                        view.freehandPoints = []
+                        view.freehandAlpha = 0
+                    }
+                }
+
                 view.needsDisplay = true
             }
             return kCVReturnSuccess
@@ -159,14 +234,24 @@ final class OverlayView: NSView {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         context.clear(bounds)
 
-        // Convert mouse position from screen coordinates to view coordinates
         let viewPoint = convertScreenToView(mousePosition)
 
-        drawLaser(in: context, at: viewPoint)
+        // Only draw laser if there is an active laser (mousePosition is tracked)
+        // We draw laser when the overlay is shown via showOverlay()
+        // Freehand can show independently — check if we have points or drawing state
+        let hasFreehand = isFreehandDrawing || isFading
+
+        if !hasFreehand || AppState.shared.isLaserActive {
+            drawLaser(in: context, at: viewPoint)
+        }
 
         if isArrowDrawing, let start = arrowStartPoint {
             let startView = convertScreenToView(start)
             drawArrow(in: context, from: startView, to: viewPoint)
+        }
+
+        if isFreehandDrawing || (isFading && freehandAlpha > 0) {
+            drawFreehand(in: context)
         }
     }
 
@@ -231,13 +316,11 @@ final class OverlayView: NSView {
     }
 
     private func drawSpotlight(in context: CGContext, at point: CGPoint, size: CGFloat, color: NSColor) {
-        // Inner bright core
         let coreSize = size * 0.3
         let coreRect = CGRect(x: point.x - coreSize / 2, y: point.y - coreSize / 2, width: coreSize, height: coreSize)
         context.setFillColor(color.withAlphaComponent(0.9).cgColor)
         context.fillEllipse(in: coreRect)
 
-        // Outer glow
         let gradient = CGGradient(
             colorsSpace: CGColorSpaceCreateDeviceRGB(),
             colors: [
@@ -271,7 +354,6 @@ final class OverlayView: NSView {
 
         let angle = atan2(dy, dx)
 
-        // Draw line
         context.setStrokeColor(color.cgColor)
         context.setLineWidth(lineWidth)
         context.setLineCap(.round)
@@ -280,7 +362,6 @@ final class OverlayView: NSView {
         context.addLine(to: end)
         context.strokePath()
 
-        // Draw arrowhead
         let headAngle: CGFloat = .pi / 6
         let p1 = CGPoint(
             x: end.x - headSize * cos(angle - headAngle),
@@ -297,5 +378,30 @@ final class OverlayView: NSView {
         context.addLine(to: p2)
         context.closePath()
         context.fillPath()
+    }
+
+    // MARK: - Freehand Rendering
+
+    private func drawFreehand(in context: CGContext) {
+        guard freehandPoints.count > 1 else { return }
+
+        let baseColor = settings.freehandNSColor
+        let baseOpacity = CGFloat(settings.freehandOpacity)
+        let lineWidth = CGFloat(settings.freehandLineWidth)
+        let alpha = baseOpacity * freehandAlpha
+        let color = baseColor.withAlphaComponent(alpha)
+
+        let viewPoints = freehandPoints.map { convertScreenToView($0) }
+
+        context.setStrokeColor(color.cgColor)
+        context.setLineWidth(lineWidth)
+        context.setLineCap(.round)
+        context.setLineJoin(.round)
+
+        context.move(to: viewPoints[0])
+        for point in viewPoints.dropFirst() {
+            context.addLine(to: point)
+        }
+        context.strokePath()
     }
 }
