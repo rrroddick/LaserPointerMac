@@ -48,10 +48,6 @@ final class AppState: ObservableObject {
     func startArrowDraw() {
         arrowStartPoint = currentMousePosition
         isArrowDrawing = true
-        if !isLaserActive {
-            mouseTracker.startTracking()
-            overlayManager.showOverlay()
-        }
         overlayManager.setArrowDrawing(true)
         overlayManager.setArrowStartPoint(currentMousePosition)
     }
@@ -61,30 +57,16 @@ final class AppState: ObservableObject {
         arrowStartPoint = nil
         overlayManager.setArrowDrawing(false)
         overlayManager.setArrowStartPoint(nil)
-        if !isLaserActive {
-            mouseTracker.stopTracking()
-            overlayManager.hideOverlay()
-        }
     }
 
     func startFreehandDraw() {
         isFreehandDrawing = true
-        // Start tracking mouse even if laser is off, so points are collected
-        if !isLaserActive {
-            mouseTracker.startTracking()
-            overlayManager.startFreehandDraw()
-        } else {
-            overlayManager.startFreehandDraw()
-        }
+        overlayManager.startFreehandDraw()
     }
 
     func endFreehandDraw() {
         guard isFreehandDrawing else { return }
         isFreehandDrawing = false
         overlayManager.endFreehandDraw()
-        // Stop the tracker only if we started it (i.e. laser is still off)
-        if !isLaserActive {
-            mouseTracker.stopTracking()
-        }
     }
 }

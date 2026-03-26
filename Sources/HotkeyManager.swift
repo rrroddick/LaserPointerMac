@@ -77,34 +77,43 @@ final class HotkeyManager {
 
     private func checkModifierFlags() {
         guard let appState else { return }
+        guard appState.isLaserActive else {
+            // Laser off — reset states without triggering any draw action
+            isControlOnlyActive = false
+            isOptionOnlyActive = false
+            return
+        }
+
         let active = NSEvent.modifierFlags.intersection([.option, .control, .command, .shift])
 
         // Ctrl alone → Arrow
         let ctrlOnly = active == .control
         if ctrlOnly && !isControlOnlyActive {
+            // Modifier just pressed
             isControlOnlyActive = true
-            if !appState.isArrowDrawing {
-                appState.startArrowDraw()
-            }
+            if !appState.isArrowDrawing { appState.startArrowDraw() }
+        } else if ctrlOnly && isControlOnlyActive && !appState.isArrowDrawing {
+            // Still holding Ctrl, but a configured shortcut's onKeyUp stopped the arrow → restart
+            appState.startArrowDraw()
         } else if !ctrlOnly && isControlOnlyActive {
+            // Modifier released
             isControlOnlyActive = false
-            if appState.isArrowDrawing {
-                appState.endArrowDraw()
-            }
+            if appState.isArrowDrawing { appState.endArrowDraw() }
         }
 
         // Option alone → Freehand
         let optionOnly = active == .option
         if optionOnly && !isOptionOnlyActive {
+            // Modifier just pressed
             isOptionOnlyActive = true
-            if !appState.isFreehandDrawing {
-                appState.startFreehandDraw()
-            }
+            if !appState.isFreehandDrawing { appState.startFreehandDraw() }
+        } else if optionOnly && isOptionOnlyActive && !appState.isFreehandDrawing {
+            // Still holding Option, but a configured shortcut's onKeyUp stopped the draw → restart
+            appState.startFreehandDraw()
         } else if !optionOnly && isOptionOnlyActive {
+            // Modifier released
             isOptionOnlyActive = false
-            if appState.isFreehandDrawing {
-                appState.endFreehandDraw()
-            }
+            if appState.isFreehandDrawing { appState.endFreehandDraw() }
         }
     }
 }
