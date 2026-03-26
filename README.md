@@ -23,6 +23,7 @@ L'app crea un "puntatore laser" virtuale attorno al cursore del mouse, permetten
   - `Spotlight`: Scurisce l'intero schermo lasciando un cerchio di luce attorno al cursore.
 - **Altamente Personalizzabile**: Modifica colore, dimensione, opacità, e aggiungi una sottile animazione pulsante.
 - **Disegna Frecce al Volo**: Tieni premuta una scorciatoia (default: `Option + \`` o `Option + <` su layout ISO) **mentre** il laser è attivo per disegnare una freccia direzionale temporanea sullo schermo. Appena rilasci il tasto, la freccia scompare.
+- **Disegno Libero con Dissolvenza** *(Novità v1.1)*: Tieni premuto `Option + Z` (configurabile) per disegnare liberamente sullo schermo seguendo il cursore. Al rilascio del tasto, il tracciato **non scompare di colpo** ma si dissolve gradualmente con una animazione di dissolvenza configurabile (0.3s – 5s). Funziona anche senza il laser attivo!
 - **Supporto Multi-Monitor**: Il laser attraversa fluidamente tutti gli schermi (incluso l'iPad in modalità Sidecar).
 - **Invisibile ai Click**: L'overlay è puramente visivo; puoi continuare a cliccare, scrivere e interagire con le app normalmente.
 
@@ -38,7 +39,7 @@ Puoi scaricare l'app già compilata e pronta all'uso dalla pagina **[Releases](h
   - L'overlay del laser non è basato su view di SwiftUI (sarebbero troppo lente per seguire il mouse a 120Hz/60Hz), ma è un `NSPanel` trasparente (`.nonactivatingPanel`, `ignoresMouseEvents = true`, Level `CGWindowLevelForKey(.overlayWindow)`) con dentro una `NSView` custom.
   - Il disegno di laser e frecce avviene a bassissimo livello tramite `CGContext`.
   - Animazione e Tracking pilotati da un `CVDisplayLink` per garantire i massimi FPS sincronizzati con il refresh rate del monitor.
-- **Event Monitoring**: Il tracciamento del cursore usa `NSEvent.mouseLocation`. Il rilevamento avanzato della tastiera (per il draw della freccia) utilizza la libreria open-source **[KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts)**.
+- **Event Monitoring**: Il tracciamento del cursore usa `NSEvent.mouseLocation`. Il rilevamento avanzato della tastiera (per il draw della freccia e del freehand) utilizza la libreria open-source **[KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts)**.
 - **Persistenza**: Implementata con `@AppStorage` (UserDefaults).
 
 ### 🚀 Installazione & Compilazione (Per Sviluppatori)
@@ -65,7 +66,8 @@ It creates a virtual "laser pointer" effect around your mouse cursor, allowing y
   - `Glow`: A dot with a soft, radial gradient glow.
   - `Spotlight`: Darkens the entire screen while leaving a spotlight circle around the cursor.
 - **Highly Customizable**: Change color, size, opacity, and toggle a subtle pulsing animation.
-- **On-the-fly Drawing**: Hold down a shortcut (default: `Option + \`` or `Option + <` on ISO layouts) **while** the laser is active to draw a temporary directional arrow on the screen. The arrow vanishes instantly upon releasing the shortcut key.
+- **On-the-fly Arrow Drawing**: Hold down a shortcut (default: `Option + \`` or `Option + <` on ISO layouts) **while** the laser is active to draw a temporary directional arrow on the screen. The arrow vanishes instantly upon releasing the shortcut key.
+- **Freehand Drawing with Fade-Out** *(New in v1.1)*: Hold `Option + Z` (configurable) to draw freely on screen while moving your cursor. When you release the key, the drawing doesn't disappear instantly — it fades out smoothly with a configurable dissolve effect (0.3s – 5s). Works independently of the laser!
 - **Multi-Monitor Support**: The laser seamlessly transitions across all connected displays.
 - **Click-Through Overlay**: The visual overlay is entirely non-interactive; you can type, click, and drag through it without interruption.
 
@@ -81,7 +83,7 @@ You can download the pre-compiled, ready-to-use application from the **[Releases
   - To achieve maximum 60/120fps tracking, the laser is **not** rendered via SwiftUI `.overlay`. Instead, the app generates a transparent, click-through `NSPanel` (`.nonactivatingPanel`, `ignoresMouseEvents = true`, Level `CGWindowLevelForKey(.overlayWindow)`) containing a custom `NSView`.
   - Rendering for lasers, gradients, and arrows is done at a low level using `CGContext`.
   - Tracking and animations are synchronized with the monitor's refresh rate using a `CVDisplayLink`.
-- **Event Monitoring**: Mouse polling utilizes `NSEvent.mouseLocation`. Advanced global hotkey listening (especially for the press-and-hold arrow mechanic) is powered by the excellent open-source library **[KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts)**.
+- **Event Monitoring**: Mouse polling utilizes `NSEvent.mouseLocation`. Advanced global hotkey listening (for the arrow and freehand mechanics) is powered by the excellent open-source library **[KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts)**.
 - **Persistence**: Managed automatically via state-driven `@AppStorage` (UserDefaults).
 
 ### 🚀 Build & Run

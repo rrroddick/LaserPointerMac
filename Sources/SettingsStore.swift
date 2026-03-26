@@ -41,14 +41,14 @@ final class SettingsStore: ObservableObject {
 
     // MARK: - Freehand Draw Settings
 
-    @AppStorage("freehandColorHex") var freehandColorHex: String = "#00F514"
+    @AppStorage("freehandColorHex") var freehandColorHex: String = "#007AFF"
     @AppStorage("freehandLineWidth") var freehandLineWidth: Double = 3
     @AppStorage("freehandOpacity") var freehandOpacity: Double = 1.0
     @AppStorage("freehandFadeDuration") var freehandFadeDuration: Double = 1.0
 
     var freehandColor: Color {
         get { Color(hex: freehandColorHex) ?? .green }
-        set { freehandColorHex = newValue.toHex() ?? "#00F514" }
+        set { freehandColorHex = newValue.toHex() ?? "#007AFF" }
     }
 
     var freehandNSColor: NSColor {
