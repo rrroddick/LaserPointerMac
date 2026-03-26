@@ -24,6 +24,7 @@ L'app crea un "puntatore laser" virtuale attorno al cursore del mouse, permetten
 - **Altamente Personalizzabile**: Modifica colore, dimensione, opacità, e aggiungi una sottile animazione pulsante.
 - **Disegna Frecce al Volo**: Tieni premuta una scorciatoia (default: `Option + \`` o `Option + <` su layout ISO) **mentre** il laser è attivo per disegnare una freccia direzionale temporanea sullo schermo. Appena rilasci il tasto, la freccia scompare.
 - **Disegno Libero con Dissolvenza** *(Novità v1.1)*: Tieni premuto `Option + Z` (configurabile) per disegnare liberamente sullo schermo seguendo il cursore. Al rilascio del tasto, il tracciato **non scompare di colpo** ma si dissolve gradualmente con una animazione di dissolvenza configurabile (0.3s – 5s). Funziona anche senza il laser attivo!
+- **Tasti di scelta rapida rapissimi** *(Novità v1.2)*: Senza configurare nessuna scorciatoia, tieni premuto solo **Ctrl** per disegnare una freccia o solo **Option** per il disegno a mano libera. Se nei Settings imposti una scorciatoia personalizzata per una di queste azioni, quella scorciatoia prende il sopravvento e il tasto modificatore singolo viene disabilitato per quell'azione.
 - **Supporto Multi-Monitor**: Il laser attraversa fluidamente tutti gli schermi (incluso l'iPad in modalità Sidecar).
 - **Invisibile ai Click**: L'overlay è puramente visivo; puoi continuare a cliccare, scrivere e interagire con le app normalmente.
 
@@ -68,6 +69,7 @@ It creates a virtual "laser pointer" effect around your mouse cursor, allowing y
 - **Highly Customizable**: Change color, size, opacity, and toggle a subtle pulsing animation.
 - **On-the-fly Arrow Drawing**: Hold down a shortcut (default: `Option + \`` or `Option + <` on ISO layouts) **while** the laser is active to draw a temporary directional arrow on the screen. The arrow vanishes instantly upon releasing the shortcut key.
 - **Freehand Drawing with Fade-Out** *(New in v1.1)*: Hold `Option + Z` (configurable) to draw freely on screen while moving your cursor. When you release the key, the drawing doesn't disappear instantly — it fades out smoothly with a configurable dissolve effect (0.3s – 5s). Works independently of the laser!
+- **Instant Modifier-Only Shortcuts** *(New in v1.2)*: Without configuring any shortcut, simply hold **Ctrl** alone to draw an arrow, or **Option** alone for freehand drawing. If you configure a custom shortcut for either action in Settings, the custom shortcut takes over and the modifier-only path is automatically disabled for that action.
 - **Multi-Monitor Support**: The laser seamlessly transitions across all connected displays.
 - **Click-Through Overlay**: The visual overlay is entirely non-interactive; you can type, click, and drag through it without interruption.
 

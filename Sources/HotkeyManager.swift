@@ -4,10 +4,10 @@ import KeyboardShortcuts
 final class HotkeyManager {
     private weak var appState: AppState?
 
-    // Track modifier-only state to detect press vs release
+    /// Track modifier-only state to detect press vs. release transitions
     private var isControlOnlyActive = false
     private var isOptionOnlyActive = false
-    private var flagsMonitor: Any?
+    private var pollingTimer: Timer?
 
     func configure(appState: AppState) {
         self.appState = appState
@@ -18,7 +18,7 @@ final class HotkeyManager {
     }
 
     deinit {
-        (flagsMonitor as? Timer)?.invalidate()
+        pollingTimer?.invalidate()
     }
 
     // MARK: - Toggle Laser
@@ -29,55 +29,56 @@ final class HotkeyManager {
         }
     }
 
-    // MARK: - Arrow Draw (press-and-hold via KeyboardShortcuts)
+    // MARK: - Arrow Draw (configured shortcut, press-and-hold)
 
     private func setupArrowDraw() {
         KeyboardShortcuts.onKeyDown(for: .drawArrow) { [weak self] in
-            guard let self, let appState = self.appState else { return }
+            guard let appState = self?.appState else { return }
             guard appState.isLaserActive, !appState.isArrowDrawing else { return }
             appState.startArrowDraw()
         }
-
         KeyboardShortcuts.onKeyUp(for: .drawArrow) { [weak self] in
-            guard let self, let appState = self.appState else { return }
+            guard let appState = self?.appState else { return }
             guard appState.isArrowDrawing else { return }
             appState.endArrowDraw()
         }
     }
 
-    // MARK: - Freehand Draw (press-and-hold via KeyboardShortcuts)
+    // MARK: - Freehand Draw (configured shortcut, press-and-hold)
 
     private func setupFreehandDraw() {
         KeyboardShortcuts.onKeyDown(for: .drawFreehand) { [weak self] in
-            guard let self, let appState = self.appState else { return }
+            guard let appState = self?.appState else { return }
             guard !appState.isFreehandDrawing else { return }
             appState.startFreehandDraw()
         }
-
         KeyboardShortcuts.onKeyUp(for: .drawFreehand) { [weak self] in
-            guard let self, let appState = self.appState else { return }
+            guard let appState = self?.appState else { return }
             guard appState.isFreehandDrawing else { return }
             appState.endFreehandDraw()
         }
     }
 
-    // MARK: - Modifier-only shortcuts via polling (Option alone = freehand, Ctrl alone = arrow)
+    // MARK: - Modifier-only shortcuts (Ctrl alone = arrow, Option alone = freehand)
     //
     // NSEvent.addGlobalMonitorForEvents is unreliable for flagsChanged on macOS 14+.
-    // Instead, we poll NSEvent.modifierFlags at 60fps — it reads hardware state directly
-    // and works regardless of which app is frontmost, with no extra permissions needed.
+    // Instead we poll NSEvent.modifierFlags at 60 fps — reads hardware state directly,
+    // works regardless of which app is frontmost, requires no extra permissions.
+    //
+    // Rules:
+    //  • Modifier-only is active only when the laser is on.
+    //  • If a custom shortcut is configured for an action, modifier-only is disabled
+    //    for that action (and any in-progress draw is stopped immediately).
 
     private func setupModifierOnlyShortcuts() {
-        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            DispatchQueue.main.async { self?.checkModifierFlags() }
+        pollingTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            self?.checkModifierFlags()
         }
-        RunLoop.main.add(timer, forMode: .common)
-        flagsMonitor = timer
+        RunLoop.main.add(pollingTimer!, forMode: .common)
     }
 
     private func checkModifierFlags() {
-        guard let appState else { return }
-        guard appState.isLaserActive else {
+        guard let appState, appState.isLaserActive else {
             isControlOnlyActive = false
             isOptionOnlyActive = false
             return
@@ -85,46 +86,42 @@ final class HotkeyManager {
 
         let active = NSEvent.modifierFlags.intersection([.option, .control, .command, .shift])
 
-        // Ctrl alone → Arrow (only when no custom shortcut is configured for drawArrow)
-        let arrowShortcutConfigured = KeyboardShortcuts.getShortcut(for: .drawArrow) != nil
-        if !arrowShortcutConfigured {
+        // --- Ctrl alone → Arrow ---
+        if KeyboardShortcuts.getShortcut(for: .drawArrow) == nil {
             let ctrlOnly = active == .control
             if ctrlOnly && !isControlOnlyActive {
                 isControlOnlyActive = true
                 if !appState.isArrowDrawing { appState.startArrowDraw() }
             } else if ctrlOnly && isControlOnlyActive && !appState.isArrowDrawing {
+                // Ctrl still held but draw was stopped externally — restart it
                 appState.startArrowDraw()
             } else if !ctrlOnly && isControlOnlyActive {
                 isControlOnlyActive = false
                 if appState.isArrowDrawing { appState.endArrowDraw() }
             }
-        } else {
-            // Shortcut now configured — stop any draw that was started via modifier-only
-            if isControlOnlyActive {
-                isControlOnlyActive = false
-                if appState.isArrowDrawing { appState.endArrowDraw() }
-            }
+        } else if isControlOnlyActive {
+            // Custom shortcut just registered — cleanly stop any modifier-only draw
+            isControlOnlyActive = false
+            if appState.isArrowDrawing { appState.endArrowDraw() }
         }
 
-        // Option alone → Freehand (only when no custom shortcut is configured for drawFreehand)
-        let freehandShortcutConfigured = KeyboardShortcuts.getShortcut(for: .drawFreehand) != nil
-        if !freehandShortcutConfigured {
+        // --- Option alone → Freehand ---
+        if KeyboardShortcuts.getShortcut(for: .drawFreehand) == nil {
             let optionOnly = active == .option
             if optionOnly && !isOptionOnlyActive {
                 isOptionOnlyActive = true
                 if !appState.isFreehandDrawing { appState.startFreehandDraw() }
             } else if optionOnly && isOptionOnlyActive && !appState.isFreehandDrawing {
+                // Option still held but draw was stopped externally — restart it
                 appState.startFreehandDraw()
             } else if !optionOnly && isOptionOnlyActive {
                 isOptionOnlyActive = false
                 if appState.isFreehandDrawing { appState.endFreehandDraw() }
             }
-        } else {
-            // Shortcut now configured — stop any draw that was started via modifier-only
-            if isOptionOnlyActive {
-                isOptionOnlyActive = false
-                if appState.isFreehandDrawing { appState.endFreehandDraw() }
-            }
+        } else if isOptionOnlyActive {
+            // Custom shortcut just registered — cleanly stop any modifier-only draw
+            isOptionOnlyActive = false
+            if appState.isFreehandDrawing { appState.endFreehandDraw() }
         }
     }
 }
