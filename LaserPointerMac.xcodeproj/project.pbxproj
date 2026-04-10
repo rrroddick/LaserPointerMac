@@ -35,6 +35,9 @@
 		BB0011000000000000000001 /* LaserPointerMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LaserPointerMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB0012000000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		BB0013000000000000000001 /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
+		CA661DBE2F89985200A04615 /* 1.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = 1.png; sourceTree = "<group>"; };
+		CA661DBF2F89985200A04615 /* 2.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = 2.png; sourceTree = "<group>"; };
+		CA661DC02F89985200A04615 /* 3.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = 3.png; sourceTree = "<group>"; };
 		CA6707FB2F74331C00EBF503 /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
 		CA6707FC2F74331C00EBF503 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -51,9 +54,20 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		CA661DBD2F89984200A04615 /* Screenshot */ = {
+			isa = PBXGroup;
+			children = (
+				CA661DBE2F89985200A04615 /* 1.png */,
+				CA661DBF2F89985200A04615 /* 2.png */,
+				CA661DC02F89985200A04615 /* 3.png */,
+			);
+			path = Screenshot;
+			sourceTree = "<group>";
+		};
 		EE0001000000000000000001 = {
 			isa = PBXGroup;
 			children = (
+				CA661DBD2F89984200A04615 /* Screenshot */,
 				CA6707FB2F74331C00EBF503 /* LICENSE */,
 				CA6707FC2F74331C00EBF503 /* README.md */,
 				EE0002000000000000000001 /* Sources */,

@@ -8,6 +8,16 @@
 
 ---
 
+## Screenshots
+
+<p align="center">
+  <img src="Screenshot/1.png" alt="Laser Dot" width="32%" />
+  <img src="Screenshot/2.png" alt="Ring / Spotlight" width="32%" />
+  <img src="Screenshot/3.png" alt="Freehand Drawing" width="32%" />
+</p>
+
+---
+
 ## <a name="italiano"></a> 🇮🇹 Italiano
 
 **LaserPointerMac** è una Menu Bar app nativa per macOS, scritta interamente in Swift e SwiftUI, pensata per chi fa presentazioni, demo, screencast o registrazioni schermo.
