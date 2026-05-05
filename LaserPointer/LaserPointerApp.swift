@@ -43,6 +43,7 @@ extension NSImage {
 
 struct MenuBarMenu: View {
     @ObservedObject var appState = AppState.shared
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         Button(appState.isLaserActive ? "Disable Laser" : "Enable Laser") {
@@ -57,8 +58,9 @@ struct MenuBarMenu: View {
 
         Divider()
 
-        SettingsLink {
-            Text("Settings…")
+        Button("Settings…") {
+            openSettings()
+            NSApp.activate(ignoringOtherApps: true)
         }
 
         Divider()
