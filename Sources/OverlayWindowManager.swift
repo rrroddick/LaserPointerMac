@@ -147,6 +147,7 @@ final class OverlayView: NSView {
 
     private let settings = SettingsStore.shared
     private var displayLink: CVDisplayLink?
+    private var displayLinkRetainedSelf: UnsafeMutableRawPointer?
     private var animationPhase: CGFloat = 0
 
     override init(frame: NSRect) {
@@ -196,6 +197,8 @@ final class OverlayView: NSView {
         CVDisplayLinkCreateWithActiveCGDisplays(&displayLink)
         guard let displayLink else { return }
 
+        let retained = Unmanaged.passRetained(self).toOpaque()
+        displayLinkRetainedSelf = retained
         CVDisplayLinkSetOutputCallback(displayLink, { (_, _, _, _, _, userInfo) -> CVReturn in
             let view = Unmanaged<OverlayView>.fromOpaque(userInfo!).takeUnretainedValue()
             DispatchQueue.main.async {
@@ -217,7 +220,7 @@ final class OverlayView: NSView {
                 view.needsDisplay = true
             }
             return kCVReturnSuccess
-        }, Unmanaged.passUnretained(self).toOpaque())
+        }, retained)
 
         CVDisplayLinkStart(displayLink)
     }
@@ -226,6 +229,10 @@ final class OverlayView: NSView {
         guard let displayLink else { return }
         CVDisplayLinkStop(displayLink)
         self.displayLink = nil
+        if let ptr = displayLinkRetainedSelf {
+            Unmanaged<OverlayView>.fromOpaque(ptr).release()
+            displayLinkRetainedSelf = nil
+        }
     }
 
     // MARK: - Drawing

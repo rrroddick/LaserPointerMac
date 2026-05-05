@@ -47,7 +47,7 @@ final class SettingsStore: ObservableObject {
     @AppStorage("freehandFadeDuration") var freehandFadeDuration: Double = 1.0
 
     var freehandColor: Color {
-        get { Color(hex: freehandColorHex) ?? .green }
+        get { Color(hex: freehandColorHex) ?? .blue }
         set { freehandColorHex = newValue.toHex() ?? "#007AFF" }
     }
 

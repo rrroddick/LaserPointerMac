@@ -92,7 +92,7 @@ struct LaserSettingsTab: View {
 
 struct ArrowSettingsTab: View {
     @EnvironmentObject var settings: SettingsStore
-    @State private var selectedColor: Color = .orange
+    @State private var selectedColor: Color = .blue
 
     var body: some View {
         Form {
@@ -128,7 +128,7 @@ struct ArrowSettingsTab: View {
 
 struct FreehandSettingsTab: View {
     @EnvironmentObject var settings: SettingsStore
-    @State private var selectedColor: Color = Color(red: 0, green: 0.96, blue: 0.08)
+    @State private var selectedColor: Color = .blue
 
     var body: some View {
         Form {
