@@ -7,6 +7,9 @@ final class HotkeyManager {
     /// Track modifier-only state to detect press vs. release transitions
     private var isControlOnlyActive = false
     private var isOptionOnlyActive = false
+    /// Requires at least one empty-modifier tick after laser toggle before modifier-only
+    /// shortcuts can fire, preventing spurious draws when the user releases Ctrl+Option+L.
+    private var modifierArmed = false
     private var pollingTimer: Timer?
 
     func configure(appState: AppState) {
@@ -81,10 +84,16 @@ final class HotkeyManager {
         guard let appState, appState.isLaserActive else {
             isControlOnlyActive = false
             isOptionOnlyActive = false
+            modifierArmed = false
             return
         }
 
         let active = NSEvent.modifierFlags.intersection([.option, .control, .command, .shift])
+
+        if !modifierArmed {
+            if active == [] { modifierArmed = true }
+            return
+        }
 
         // --- Ctrl alone → Arrow ---
         if KeyboardShortcuts.getShortcut(for: .drawArrow) == nil {

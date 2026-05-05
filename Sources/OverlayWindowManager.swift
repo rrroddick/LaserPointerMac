@@ -278,8 +278,6 @@ final class OverlayView: NSView {
             drawRing(in: context, at: point, size: size * pulse, color: color, borderWidth: borderWidth)
         case .glow:
             drawGlow(in: context, at: point, size: size * pulse, color: color)
-        case .spotlight:
-            drawSpotlight(in: context, at: point, size: size * pulse, color: color)
         }
     }
 
@@ -310,30 +308,6 @@ final class OverlayView: NSView {
         context.drawRadialGradient(
             gradient,
             startCenter: point, startRadius: 0,
-            endCenter: point, endRadius: size,
-            options: .drawsAfterEndLocation
-        )
-    }
-
-    private func drawSpotlight(in context: CGContext, at point: CGPoint, size: CGFloat, color: NSColor) {
-        let coreSize = size * 0.3
-        let coreRect = CGRect(x: point.x - coreSize / 2, y: point.y - coreSize / 2, width: coreSize, height: coreSize)
-        context.setFillColor(color.withAlphaComponent(0.9).cgColor)
-        context.fillEllipse(in: coreRect)
-
-        let gradient = CGGradient(
-            colorsSpace: CGColorSpaceCreateDeviceRGB(),
-            colors: [
-                color.withAlphaComponent(0.6).cgColor,
-                color.withAlphaComponent(0.2).cgColor,
-                color.withAlphaComponent(0.0).cgColor
-            ] as CFArray,
-            locations: [0, 0.5, 1.0]
-        )!
-
-        context.drawRadialGradient(
-            gradient,
-            startCenter: point, startRadius: coreSize / 2,
             endCenter: point, endRadius: size,
             options: .drawsAfterEndLocation
         )

@@ -64,7 +64,6 @@ enum LaserType: String, CaseIterable, Identifiable {
     case dot
     case ring
     case glow
-    case spotlight
 
     var id: String { rawValue }
 
@@ -73,7 +72,6 @@ enum LaserType: String, CaseIterable, Identifiable {
         case .dot: return "Dot"
         case .ring: return "Ring"
         case .glow: return "Glow"
-        case .spotlight: return "Spotlight"
         }
     }
 }
@@ -101,9 +99,9 @@ extension Color {
         guard let components = NSColor(self).usingColorSpace(.sRGB)?.cgColor.components else {
             return nil
         }
-        let r = Int((components[safe: 0] ?? 0) * 255)
-        let g = Int((components[safe: 1] ?? 0) * 255)
-        let b = Int((components[safe: 2] ?? 0) * 255)
+        let r = Int(min(max(components[safe: 0] ?? 0, 0), 1) * 255)
+        let g = Int(min(max(components[safe: 1] ?? 0, 0), 1) * 255)
+        let b = Int(min(max(components[safe: 2] ?? 0, 0), 1) * 255)
         return String(format: "#%02X%02X%02X", r, g, b)
     }
 }

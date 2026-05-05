@@ -249,6 +249,7 @@ struct PermissionsSettingsTab: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear { accessibilityGranted = AXIsProcessTrusted() }
     }
 
     private func openAccessibilitySettings() {
