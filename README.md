@@ -1,7 +1,7 @@
 # LaserPointerMac
 
 <p align="center">
-  <img src="LaserPonter/Assets.xcassets/AppIcon.appiconset/icon_128x128.png" alt="LaserPointerMac Icon" width="128" />
+  <img src="LaserPointer/Assets.xcassets/AppIcon.appiconset/icon_128x128.png" alt="LaserPointerMac Icon" width="128" />
 </p>
 
 [🇮🇹 Italiano](#italiano) | [🇬🇧 English](#english)
