@@ -10,9 +10,7 @@ final class OverlayWindowManager {
         hideOverlay()
 
         for screen in NSScreen.screens {
-            let window = OverlayWindow(screen: screen)
-            window.orderFrontRegardless()
-            overlayWindows[screen] = window
+            overlayWindows[screen] = makeOverlayWindow(screen: screen, laserActive: true)
         }
 
         NotificationCenter.default.addObserver(
@@ -62,12 +60,9 @@ final class OverlayWindowManager {
     // MARK: - Freehand
 
     func startFreehandDraw() {
-        // Ensure overlay windows exist even if laser is not currently active
         if overlayWindows.isEmpty {
             for screen in NSScreen.screens {
-                let window = OverlayWindow(screen: screen)
-                window.orderFrontRegardless()
-                overlayWindows[screen] = window
+                overlayWindows[screen] = makeOverlayWindow(screen: screen, laserActive: false)
             }
         }
         for (_, window) in overlayWindows {
@@ -81,17 +76,18 @@ final class OverlayWindowManager {
         }
     }
 
-    func addFreehandPoint(_ point: CGPoint) {
-        for (_, window) in overlayWindows {
-            window.overlayView.addFreehandPoint(point)
-        }
-    }
-
     @objc private func screensChanged() {
         showOverlay()
         updateMousePosition(currentMousePosition)
         setArrowDrawing(isArrowDrawing)
         setArrowStartPoint(arrowStartPoint)
+    }
+
+    private func makeOverlayWindow(screen: NSScreen, laserActive: Bool) -> OverlayWindow {
+        let window = OverlayWindow(screen: screen)
+        window.overlayView.isLaserActive = laserActive
+        window.orderFrontRegardless()
+        return window
     }
 }
 
@@ -125,8 +121,21 @@ final class OverlayWindow: NSPanel {
 // MARK: - Overlay View (renders laser, arrow, and freehand)
 
 final class OverlayView: NSView {
+    var isLaserActive: Bool = false
+
     var mousePosition: CGPoint = .zero {
-        didSet { if mousePosition != oldValue { needsDisplay = true } }
+        didSet {
+            guard mousePosition != oldValue else { return }
+            // When only the laser dot is visible, invalidate just the area it occupies
+            // (old position + new position) rather than the entire screen.
+            if !isArrowDrawing, !isFreehandDrawing, !isFading, window != nil {
+                let oldView = convertScreenToView(oldValue)
+                let newView = convertScreenToView(mousePosition)
+                setNeedsDisplay(laserDirtyRect(at: oldView).union(laserDirtyRect(at: newView)))
+            } else {
+                needsDisplay = true
+            }
+        }
     }
 
     var isArrowDrawing: Bool = false {
@@ -139,7 +148,6 @@ final class OverlayView: NSView {
 
     // MARK: Freehand State
     private(set) var isFreehandDrawing: Bool = false
-    private var freehandPoints: [CGPoint] = []
     private var freehandViewPoints: [CGPoint] = []
     private var freehandAlpha: CGFloat = 1.0
     private var isFading: Bool = false
@@ -172,10 +180,8 @@ final class OverlayView: NSView {
     // MARK: - Freehand Public API
 
     func startFreehandDraw() {
-        // Cancel any ongoing fade first
         isFading = false
         freehandAlpha = 1.0
-        freehandPoints = []
         freehandViewPoints = []
         isFreehandDrawing = true
         needsDisplay = true
@@ -183,14 +189,13 @@ final class OverlayView: NSView {
 
     func addFreehandPoint(_ screenPoint: CGPoint) {
         guard isFreehandDrawing else { return }
-        freehandPoints.append(screenPoint)
         freehandViewPoints.append(convertScreenToView(screenPoint))
         needsDisplay = true
     }
 
     func endFreehandDraw() {
         isFreehandDrawing = false
-        guard !freehandPoints.isEmpty else { return }
+        guard !freehandViewPoints.isEmpty else { return }
         fadeDuration = settings.freehandFadeDuration
         freehandAlpha = 1.0
         fadeStartTime = CACurrentMediaTime()
@@ -214,14 +219,12 @@ final class OverlayView: NSView {
                     if view.animationPhase > .pi * 2 { view.animationPhase -= .pi * 2 }
                 }
 
-                // Update freehand fade
                 if view.isFading {
                     let elapsed = CACurrentMediaTime() - view.fadeStartTime
                     let progress = min(elapsed / view.fadeDuration, 1.0)
                     view.freehandAlpha = CGFloat(1.0 - progress)
                     if progress >= 1.0 {
                         view.isFading = false
-                        view.freehandPoints = []
                         view.freehandViewPoints = []
                         view.freehandAlpha = 0
                     }
@@ -253,16 +256,14 @@ final class OverlayView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
-        context.clear(bounds)
+        // Clear only the invalidated region, not the entire screen surface.
+        context.clear(dirtyRect)
 
-        let viewPoint = convertScreenToView(mousePosition)
-
-        // Only draw laser if there is an active laser (mousePosition is tracked)
-        // We draw laser when the overlay is shown via showOverlay()
-        // Freehand can show independently — check if we have points or drawing state
         let hasFreehand = isFreehandDrawing || isFading
+        let needsViewPoint = isLaserActive || !hasFreehand || isArrowDrawing
+        let viewPoint = needsViewPoint ? convertScreenToView(mousePosition) : .zero
 
-        if !hasFreehand || AppState.shared.isLaserActive {
+        if !hasFreehand || isLaserActive {
             drawLaser(in: context, at: viewPoint)
         }
 
@@ -280,6 +281,13 @@ final class OverlayView: NSView {
         guard let window = self.window else { return screenPoint }
         let windowPoint = window.convertPoint(fromScreen: screenPoint)
         return convert(windowPoint, from: nil)
+    }
+
+    private func laserDirtyRect(at viewPoint: CGPoint) -> CGRect {
+        // Extra padding covers pulse animation (±10% size) and the glow gradient edge.
+        let radius = CGFloat(settings.laserSize) * 1.2 + 10
+        return CGRect(x: viewPoint.x - radius, y: viewPoint.y - radius,
+                      width: radius * 2, height: radius * 2)
     }
 
     // MARK: - Laser Rendering
@@ -353,8 +361,9 @@ final class OverlayView: NSView {
         guard length > 5 else { return }
 
         let angle = atan2(dy, dx)
+        let cgColor = color.cgColor
 
-        context.setStrokeColor(color.cgColor)
+        context.setStrokeColor(cgColor)
         context.setLineWidth(lineWidth)
         context.setLineCap(.round)
 
@@ -372,7 +381,7 @@ final class OverlayView: NSView {
             y: end.y - headSize * sin(angle + headAngle)
         )
 
-        context.setFillColor(color.cgColor)
+        context.setFillColor(cgColor)
         context.move(to: end)
         context.addLine(to: p1)
         context.addLine(to: p2)

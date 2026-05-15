@@ -24,7 +24,6 @@ final class AppState: ObservableObject {
 
     private func setupMouseBinding() {
         mouseTracker.$mouseLocation
-            .receive(on: RunLoop.main)
             .sink { [weak self] position in
                 self?.currentMousePosition = position
                 self?.overlayManager.updateMousePosition(position)
