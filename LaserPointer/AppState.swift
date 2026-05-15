@@ -37,6 +37,12 @@ final class AppState: ObservableObject {
             mouseTracker.startTracking()
             overlayManager.showOverlay()
             hotkeyManager.startModifierPolling()
+            // Push the actual cursor position to the new overlay immediately.
+            // The Combine sink won't fire if the mouse hasn't moved since last tracking,
+            // so the overlay would stay at .zero until the first movement.
+            let pos = NSEvent.mouseLocation
+            currentMousePosition = pos
+            overlayManager.updateMousePosition(pos)
         } else {
             mouseTracker.stopTracking()
             overlayManager.hideOverlay()
