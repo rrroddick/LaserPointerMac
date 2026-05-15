@@ -169,6 +169,9 @@ final class OverlayView: NSView {
     private var isFading: Bool = false
     private var fadeStartTime: CFTimeInterval = 0
     private var fadeDuration: CFTimeInterval = 1.0
+    // Accumulated bounding rect of all freehand points in view-space.
+    // Used by the display link to issue a tight setNeedsDisplay during fade.
+    private var freehandBoundingRect: CGRect = .null
 
     private let settings = SettingsStore.shared
     private var caDisplayLink: CADisplayLink?
@@ -182,8 +185,6 @@ final class OverlayView: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        wantsLayer = true
-        layer?.isOpaque = false
         startDisplayLink()
     }
 
@@ -201,6 +202,7 @@ final class OverlayView: NSView {
         isFading = false
         freehandAlpha = 1.0
         freehandViewPoints.removeAll(keepingCapacity: true)
+        freehandBoundingRect = .null
         isFreehandDrawing = true
         needsDisplay = true
     }
@@ -218,6 +220,12 @@ final class OverlayView: NSView {
             guard dx * dx + dy * dy >= Self.minFreehandDistanceSq else { return }
         }
         freehandViewPoints.append(viewPoint)
+        // Grow the bounding rect for use by the display link during fade.
+        let pad = CGFloat(settings.freehandLineWidth) / 2 + 2
+        let ptRect = CGRect(x: viewPoint.x - pad, y: viewPoint.y - pad, width: pad * 2, height: pad * 2)
+        freehandBoundingRect = freehandBoundingRect.isNull
+            ? ptRect
+            : freehandBoundingRect.union(ptRect)
         // needsDisplay is already set by mousePosition.didSet for the same position update
     }
 
@@ -274,18 +282,31 @@ final class OverlayView: NSView {
             if progress >= 1.0 {
                 isFading = false
                 freehandViewPoints.removeAll(keepingCapacity: true)
+                freehandBoundingRect = .null
                 freehandAlpha = 0
             }
         }
 
-        // Only redraw if the display link itself has something to animate.
-        // Mouse-movement redraws are handled by the mousePosition property observer.
-        if animating || isFading {
-            needsDisplay = true
-        } else {
+        guard animating || isFading else {
             // Nothing to animate — suspend until animation or fading resumes.
             caDisplayLink?.isPaused = true
             lastDisplayLinkTime = 0
+            return
+        }
+
+        // Issue a tight setNeedsDisplay rather than invalidating the whole screen.
+        // This is the key fix for CPU: clearing a ~100×100pt rect costs a fraction
+        // of clearing a full 5K screen at 60-120Hz.
+        var dirty = CGRect.null
+        if animating && (!isFading || isLaserActive) {
+            let viewPt = convertScreenToView(mousePosition)
+            dirty = dirty.union(laserDirtyRect(from: viewPt, to: viewPt))
+        }
+        if isFading, !freehandBoundingRect.isNull {
+            dirty = dirty.union(freehandBoundingRect)
+        }
+        if !dirty.isNull {
+            setNeedsDisplay(dirty)
         }
     }
 
