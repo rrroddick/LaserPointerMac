@@ -183,7 +183,7 @@ final class OverlayView: NSView {
     func startFreehandDraw() {
         isFading = false
         freehandAlpha = 1.0
-        freehandViewPoints = []
+        freehandViewPoints.removeAll(keepingCapacity: true)
         isFreehandDrawing = true
         needsDisplay = true
     }
@@ -201,7 +201,7 @@ final class OverlayView: NSView {
             guard dx * dx + dy * dy >= Self.minFreehandDistanceSq else { return }
         }
         freehandViewPoints.append(viewPoint)
-        needsDisplay = true
+        // needsDisplay is already set by mousePosition.didSet for the same position update
     }
 
     func endFreehandDraw() {

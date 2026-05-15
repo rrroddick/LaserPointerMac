@@ -5,10 +5,10 @@ final class AppState: ObservableObject {
     static let shared = AppState()
 
     @Published private(set) var isLaserActive = false
-    @Published private(set) var isArrowDrawing = false
-    @Published private(set) var isFreehandDrawing = false
-    @Published var arrowStartPoint: CGPoint? = nil
-    @Published var currentMousePosition: CGPoint = .zero
+    private(set) var isArrowDrawing = false
+    private(set) var isFreehandDrawing = false
+    var arrowStartPoint: CGPoint? = nil
+    var currentMousePosition: CGPoint = .zero
 
     let settings = SettingsStore.shared
     let overlayManager = OverlayWindowManager()

@@ -26,16 +26,20 @@ final class SettingsStore: ObservableObject {
         if _laserNSColor == nil || _laserColorHexCached != laserColorHex {
             _laserColorHexCached = laserColorHex
             _laserNSColor = NSColor(laserColor)
-            _laserDisplayColor = nil  // invalidate opacity-applied cache
         }
         return _laserNSColor!
     }
 
     private var _laserDisplayColor: NSColor?
+    private var _laserDisplayColorHex: String = ""
     private var _laserDisplayColorOpacity: Double = -1
-    /// Base laser color with opacity pre-applied. Cached so drawLaser never allocates per frame.
+    /// Laser color with opacity pre-applied. Cached on both hex and opacity so drawLaser
+    /// never allocates an NSColor per frame, and correctly invalidates on any setting change.
     var laserDisplayColor: NSColor {
-        if _laserDisplayColor == nil || _laserDisplayColorOpacity != laserOpacity {
+        if _laserDisplayColor == nil
+            || _laserDisplayColorHex != laserColorHex
+            || _laserDisplayColorOpacity != laserOpacity {
+            _laserDisplayColorHex = laserColorHex
             _laserDisplayColorOpacity = laserOpacity
             _laserDisplayColor = laserNSColor.withAlphaComponent(CGFloat(laserOpacity))
         }
