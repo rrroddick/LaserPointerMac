@@ -36,11 +36,13 @@ final class AppState: ObservableObject {
         if isLaserActive {
             mouseTracker.startTracking()
             overlayManager.showOverlay()
+            hotkeyManager.startModifierPolling()
         } else {
             mouseTracker.stopTracking()
             overlayManager.hideOverlay()
             endArrowDraw()
             endFreehandDraw()
+            hotkeyManager.stopModifierPolling()
         }
     }
 

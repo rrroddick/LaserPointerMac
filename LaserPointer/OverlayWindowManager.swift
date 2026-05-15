@@ -160,7 +160,8 @@ final class OverlayView: NSView {
     private var animationPhase: CGFloat = 0
 
     private var cachedGradient: CGGradient?
-    private var cachedGradientKey: String = ""
+    private var cachedGradientColorHex: String = ""
+    private var cachedGradientOpacity: Double = -1
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -187,9 +188,19 @@ final class OverlayView: NSView {
         needsDisplay = true
     }
 
+    // Minimum squared distance (2pt) between consecutive freehand points.
+    // Prevents unbounded CGPath growth during slow or long drawing strokes.
+    private static let minFreehandDistanceSq: CGFloat = 4
+
     func addFreehandPoint(_ screenPoint: CGPoint) {
         guard isFreehandDrawing else { return }
-        freehandViewPoints.append(convertScreenToView(screenPoint))
+        let viewPoint = convertScreenToView(screenPoint)
+        if let last = freehandViewPoints.last {
+            let dx = viewPoint.x - last.x
+            let dy = viewPoint.y - last.y
+            guard dx * dx + dy * dy >= Self.minFreehandDistanceSq else { return }
+        }
+        freehandViewPoints.append(viewPoint)
         needsDisplay = true
     }
 
@@ -294,8 +305,7 @@ final class OverlayView: NSView {
 
     private func drawLaser(in context: CGContext, at point: CGPoint) {
         let size = CGFloat(settings.laserSize)
-        let opacity = CGFloat(settings.laserOpacity)
-        let color = settings.laserNSColor.withAlphaComponent(opacity)
+        let color = settings.laserDisplayColor
         let borderWidth = CGFloat(settings.laserBorderWidth)
         let animated = settings.laserAnimationEnabled
         let pulse: CGFloat = animated ? 1.0 + 0.1 * sin(animationPhase) : 1.0
@@ -324,9 +334,11 @@ final class OverlayView: NSView {
     }
 
     private func drawGlow(in context: CGContext, at point: CGPoint, size: CGFloat, color: NSColor) {
-        let key = settings.laserColorHex + String(settings.laserOpacity)
-        if cachedGradient == nil || cachedGradientKey != key {
-            cachedGradientKey = key
+        if cachedGradient == nil
+            || cachedGradientColorHex != settings.laserColorHex
+            || cachedGradientOpacity != settings.laserOpacity {
+            cachedGradientColorHex = settings.laserColorHex
+            cachedGradientOpacity = settings.laserOpacity
             cachedGradient = CGGradient(
                 colorsSpace: CGColorSpaceCreateDeviceRGB(),
                 colors: [
@@ -394,13 +406,15 @@ final class OverlayView: NSView {
     private func drawFreehand(in context: CGContext) {
         guard freehandViewPoints.count > 1 else { return }
 
-        let baseColor = settings.freehandNSColor
         let baseOpacity = CGFloat(settings.freehandOpacity)
         let lineWidth = CGFloat(settings.freehandLineWidth)
         let alpha = baseOpacity * freehandAlpha
-        let color = baseColor.withAlphaComponent(alpha)
+        // CGColor.copy(alpha:) is a CF-level operation — much cheaper than NSColor.withAlphaComponent
+        // which allocates a full NSColor object on every fade frame.
+        let cgColor = settings.freehandNSColor.cgColor.copy(alpha: alpha)
+            ?? settings.freehandNSColor.cgColor
 
-        context.setStrokeColor(color.cgColor)
+        context.setStrokeColor(cgColor)
         context.setLineWidth(lineWidth)
         context.setLineCap(.round)
         context.setLineJoin(.round)

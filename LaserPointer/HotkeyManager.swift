@@ -17,7 +17,7 @@ final class HotkeyManager {
         setupToggleLaser()
         setupArrowDraw()
         setupFreehandDraw()
-        setupModifierOnlyShortcuts()
+        // Modifier-only polling starts/stops with the laser via startModifierPolling/stopModifierPolling
     }
 
     deinit {
@@ -73,11 +73,21 @@ final class HotkeyManager {
     //  • If a custom shortcut is configured for an action, modifier-only is disabled
     //    for that action (and any in-progress draw is stopped immediately).
 
-    private func setupModifierOnlyShortcuts() {
-        pollingTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+    func startModifierPolling() {
+        guard pollingTimer == nil else { return }
+        let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             self?.checkModifierFlags()
         }
-        RunLoop.main.add(pollingTimer!, forMode: .common)
+        RunLoop.main.add(timer, forMode: .common)
+        pollingTimer = timer
+    }
+
+    func stopModifierPolling() {
+        pollingTimer?.invalidate()
+        pollingTimer = nil
+        isControlOnlyActive = false
+        isOptionOnlyActive = false
+        modifierArmed = false
     }
 
     private func checkModifierFlags() {
