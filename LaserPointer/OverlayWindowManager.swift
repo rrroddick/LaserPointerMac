@@ -212,6 +212,10 @@ final class OverlayView: NSView {
         freehandAlpha = 1.0
         fadeStartTime = CACurrentMediaTime()
         isFading = true
+        // Ensure the display link is running for the fade animation.
+        if let link = displayLink, !CVDisplayLinkIsRunning(link) {
+            CVDisplayLinkStart(link)
+        }
     }
 
     // MARK: - Display Link
@@ -237,7 +241,7 @@ final class OverlayView: NSView {
                 }
 
                 if view.isFading {
-                    let elapsed = CACurrentMediaTime() - view.fadeStartTime
+                    let elapsed = now - view.fadeStartTime
                     let progress = min(elapsed / view.fadeDuration, 1.0)
                     view.freehandAlpha = CGFloat(1.0 - progress)
                     if progress >= 1.0 {
@@ -251,6 +255,10 @@ final class OverlayView: NSView {
                 // Mouse-movement redraws are handled by the mousePosition property observer.
                 if animating || view.isFading {
                     view.needsDisplay = true
+                } else if let link = view.displayLink {
+                    // Nothing left to animate — suspend the display link to stop
+                    // generating pointless async closures at full refresh rate.
+                    CVDisplayLinkStop(link)
                 }
             }
             return kCVReturnSuccess
@@ -315,6 +323,11 @@ final class OverlayView: NSView {
         let color = settings.laserDisplayColor
         let borderWidth = CGFloat(settings.laserBorderWidth)
         let animated = settings.laserAnimationEnabled
+        // If animation was just re-enabled, wake the display link.
+        // It self-suspends when no longer needed, so we restart it here on the next draw.
+        if animated, let link = displayLink, !CVDisplayLinkIsRunning(link) {
+            CVDisplayLinkStart(link)
+        }
         let pulse: CGFloat = animated ? 1.0 + 0.1 * sin(animationPhase) : 1.0
 
         switch settings.laserType {
