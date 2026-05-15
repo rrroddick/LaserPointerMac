@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 
 final class OverlayWindowManager {
     private var overlayWindows: [NSScreen: OverlayWindow] = [:]
@@ -8,33 +9,19 @@ final class OverlayWindowManager {
 
     func showOverlay() {
         hideOverlay()
-
         for screen in NSScreen.screens {
             overlayWindows[screen] = makeOverlayWindow(screen: screen, laserActive: true)
         }
-
         NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(screensChanged),
-            name: NSApplication.didChangeScreenParametersNotification,
-            object: nil
-        )
+            self, selector: #selector(screensChanged),
+            name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }
 
     func hideOverlay() {
-        for (_, window) in overlayWindows {
-            // Invalidate the display link before releasing the window so the
-            // CADisplayLink strong-target reference is dropped here, letting
-            // OverlayView reach retain count 0 and deinit normally.
-            window.overlayView.stopDisplayLink()
-            window.orderOut(nil)
-        }
+        for (_, window) in overlayWindows { window.orderOut(nil) }
         overlayWindows.removeAll()
         NotificationCenter.default.removeObserver(
-            self,
-            name: NSApplication.didChangeScreenParametersNotification,
-            object: nil
-        )
+            self, name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }
 
     func updateMousePosition(_ position: CGPoint) {
@@ -49,19 +36,13 @@ final class OverlayWindowManager {
 
     func setArrowDrawing(_ drawing: Bool) {
         isArrowDrawing = drawing
-        for (_, window) in overlayWindows {
-            window.overlayView.isArrowDrawing = drawing
-        }
+        for (_, window) in overlayWindows { window.overlayView.isArrowDrawing = drawing }
     }
 
     func setArrowStartPoint(_ point: CGPoint?) {
         arrowStartPoint = point
-        for (_, window) in overlayWindows {
-            window.overlayView.arrowStartPoint = point
-        }
+        for (_, window) in overlayWindows { window.overlayView.arrowStartPoint = point }
     }
-
-    // MARK: - Freehand
 
     func startFreehandDraw() {
         if overlayWindows.isEmpty {
@@ -69,15 +50,11 @@ final class OverlayWindowManager {
                 overlayWindows[screen] = makeOverlayWindow(screen: screen, laserActive: false)
             }
         }
-        for (_, window) in overlayWindows {
-            window.overlayView.startFreehandDraw()
-        }
+        for (_, window) in overlayWindows { window.overlayView.startFreehandDraw() }
     }
 
     func endFreehandDraw() {
-        for (_, window) in overlayWindows {
-            window.overlayView.endFreehandDraw()
-        }
+        for (_, window) in overlayWindows { window.overlayView.endFreehandDraw() }
     }
 
     @objc private func screensChanged() {
@@ -89,8 +66,8 @@ final class OverlayWindowManager {
 
     private func makeOverlayWindow(screen: NSScreen, laserActive: Bool) -> OverlayWindow {
         let window = OverlayWindow(screen: screen)
+        window.orderFrontRegardless()               // window on screen BEFORE setting state
         window.overlayView.isLaserActive = laserActive
-        window.orderFrontRegardless()
         return window
     }
 }
@@ -103,14 +80,8 @@ final class OverlayWindow: NSPanel {
     init(screen: NSScreen) {
         let frame = screen.frame
         overlayView = OverlayView(frame: NSRect(origin: .zero, size: frame.size))
-
-        super.init(
-            contentRect: frame,
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-
+        super.init(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel],
+                   backing: .buffered, defer: false)
         self.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.overlayWindow)))
         self.isOpaque = false
         self.backgroundColor = .clear
@@ -122,359 +93,358 @@ final class OverlayWindow: NSPanel {
     }
 }
 
-// MARK: - Display Link Proxy
-// Holds a weak reference to OverlayView so CADisplayLink (which strongly retains
-// its target) does not form a retain cycle with the view.
-
-private final class DisplayLinkProxy: NSObject {
-    weak var view: OverlayView?
-
-    @objc func tick(_ link: CADisplayLink) {
-        view?.displayLinkTick(link)
-    }
-}
-
-// MARK: - Overlay View (renders laser, arrow, and freehand)
+// MARK: - Overlay View
 
 final class OverlayView: NSView {
-    var isLaserActive: Bool = false
+
+    var isLaserActive: Bool = false {
+        didSet { if isLaserActive != oldValue { updateLaserVisibility() } }
+    }
 
     var mousePosition: CGPoint = .zero {
         didSet {
             guard mousePosition != oldValue else { return }
-            // When only the laser dot is visible, invalidate just the area it occupies
-            // (old position + new position) rather than the entire screen.
-            if !isArrowDrawing, !isFreehandDrawing, !isFading, window != nil {
-                let oldView = convertScreenToView(oldValue)
-                let newView = convertScreenToView(mousePosition)
-                setNeedsDisplay(laserDirtyRect(from: oldView, to: newView))
-            } else {
-                needsDisplay = true
-            }
+            updatePositions()
         }
     }
 
     var isArrowDrawing: Bool = false {
-        didSet { if isArrowDrawing != oldValue { needsDisplay = true } }
+        didSet {
+            guard isArrowDrawing != oldValue else { return }
+            if !isArrowDrawing {
+                noAnimation { arrowLayer.path = nil; arrowLayer.isHidden = true }
+            }
+        }
     }
 
     var arrowStartPoint: CGPoint? = nil {
-        didSet { if arrowStartPoint != oldValue { needsDisplay = true } }
+        didSet { if arrowStartPoint != oldValue { updateArrowPath() } }
     }
 
-    // MARK: Freehand State
     private(set) var isFreehandDrawing: Bool = false
     private var freehandViewPoints: [CGPoint] = []
-    private var freehandAlpha: CGFloat = 1.0
-    private var isFading: Bool = false
-    private var fadeStartTime: CFTimeInterval = 0
-    private var fadeDuration: CFTimeInterval = 1.0
-    // Accumulated bounding rect of all freehand points in view-space.
-    // Used by the display link to issue a tight setNeedsDisplay during fade.
-    private var freehandBoundingRect: CGRect = .null
+    private var freehandPath = CGMutablePath()
 
     private let settings = SettingsStore.shared
-    private var caDisplayLink: CADisplayLink?
-    private var caDisplayLinkProxy: DisplayLinkProxy?
-    private var animationPhase: CGFloat = 0
+    private var cancellables = Set<AnyCancellable>()
 
-    private var cachedGradient: CGGradient?
-    private var cachedGradientColorHex: String = ""
-    private var cachedGradientOpacity: Double = -1
-    private var lastDisplayLinkTime: CFTimeInterval = 0
+    // Dot / Ring rendered by CAShapeLayer.
+    private let laserShapeLayer = CAShapeLayer()
+    // Glow rendered as a pre-baked CGImage inside a plain CALayer.
+    // Using CALayer (not CAGradientLayer) so that transform and opacity
+    // animations work reliably on macOS — CAGradientLayer ignores them.
+    private let laserGlowLayer  = CALayer()
+
+    private let arrowLayer    = CAShapeLayer()
+    private let freehandLayer = CAShapeLayer()
+
+    private static let minFreehandDistanceSq: CGFloat = 4
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        startDisplayLink()
+        wantsLayer = true
+        setupLayers()
+        observeSettings()
     }
 
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) not implemented")
+    required init?(coder: NSCoder) { fatalError("init(coder:) not implemented") }
+
+    // MARK: - Layout
+
+    override func layout() {
+        super.layout()
+        noAnimation {
+            arrowLayer.bounds    = bounds
+            freehandLayer.bounds = bounds
+        }
     }
 
-    deinit {
-        stopDisplayLink()
+    // MARK: - Layer Setup
+
+    private func setupLayers() {
+        guard let root = layer else { return }
+        root.isOpaque = false
+
+        laserShapeLayer.isHidden    = true
+        laserShapeLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        root.addSublayer(laserShapeLayer)
+
+        laserGlowLayer.isHidden       = true
+        laserGlowLayer.anchorPoint    = CGPoint(x: 0.5, y: 0.5)
+        laserGlowLayer.contentsGravity = .resize
+        root.addSublayer(laserGlowLayer)
+
+        arrowLayer.isHidden    = true
+        arrowLayer.anchorPoint = .zero
+        arrowLayer.position    = .zero
+        arrowLayer.bounds      = bounds
+        arrowLayer.lineCap     = .round
+        arrowLayer.lineJoin    = .round
+        root.addSublayer(arrowLayer)
+
+        freehandLayer.isHidden    = true
+        freehandLayer.anchorPoint = .zero
+        freehandLayer.position    = .zero
+        freehandLayer.bounds      = bounds
+        freehandLayer.fillColor   = nil
+        freehandLayer.lineCap     = .round
+        freehandLayer.lineJoin    = .round
+        root.addSublayer(freehandLayer)
+
+        updateLaserStyle()
     }
 
-    // MARK: - Freehand Public API
+    // MARK: - Settings Observation
+
+    private func observeSettings() {
+        settings.objectWillChange
+            .sink { [weak self] _ in
+                DispatchQueue.main.async { self?.updateLaserStyle() }
+            }
+            .store(in: &cancellables)
+    }
+
+    // MARK: - Laser Style & Visibility
+
+    private func updateLaserStyle() {
+        let size  = CGFloat(settings.laserSize)
+        let color = settings.laserDisplayColor
+        let bw    = CGFloat(settings.laserBorderWidth)
+
+        switch settings.laserType {
+        case .dot:
+            let rect = CGRect(x: 0, y: 0, width: size, height: size)
+            noAnimation {
+                laserShapeLayer.path        = CGPath(ellipseIn: rect, transform: nil)
+                laserShapeLayer.bounds      = rect
+                laserShapeLayer.fillColor   = color.cgColor
+                laserShapeLayer.strokeColor = nil
+                laserShapeLayer.lineWidth   = 0
+            }
+
+        case .ring:
+            let outerRect = CGRect(x: 0, y: 0, width: size, height: size)
+            let inset = bw / 2
+            noAnimation {
+                laserShapeLayer.path        = CGPath(ellipseIn: outerRect.insetBy(dx: inset, dy: inset), transform: nil)
+                laserShapeLayer.bounds      = outerRect
+                laserShapeLayer.fillColor   = nil
+                laserShapeLayer.strokeColor = color.cgColor
+                laserShapeLayer.lineWidth   = bw
+            }
+
+        case .glow:
+            // Pre-render the radial gradient into a CGImage at 2× for Retina quality.
+            // This runs only on settings changes — the animation itself is GPU-driven.
+            let diameter = size * 2
+            let scale: CGFloat = 2
+            let px = Int(diameter * scale)
+            if let img = makeGlowImage(pixels: px, color: color) {
+                noAnimation {
+                    laserGlowLayer.contents      = img
+                    laserGlowLayer.contentsScale = scale
+                    laserGlowLayer.bounds        = CGRect(x: 0, y: 0, width: diameter, height: diameter)
+                }
+            }
+        }
+
+        updateLaserVisibility()
+        updateArrowStyle()
+        updateFreehandStyle()
+    }
+
+    // Renders a radial gradient into a square CGImage of `pixels × pixels` resolution.
+    private func makeGlowImage(pixels: Int, color: NSColor) -> CGImage? {
+        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
+        guard let ctx = CGContext(data: nil, width: pixels, height: pixels,
+                                   bitsPerComponent: 8, bytesPerRow: 0,
+                                   space: CGColorSpaceCreateDeviceRGB(),
+                                   bitmapInfo: bitmapInfo.rawValue) else { return nil }
+        let center = CGFloat(pixels) / 2
+        guard let gradient = CGGradient(
+            colorsSpace: CGColorSpaceCreateDeviceRGB(),
+            colors: [color.cgColor,
+                     color.withAlphaComponent(0.3).cgColor,
+                     color.withAlphaComponent(0).cgColor] as CFArray,
+            locations: [0, 0.4, 1.0]) else { return nil }
+        ctx.drawRadialGradient(gradient,
+                               startCenter: CGPoint(x: center, y: center), startRadius: 0,
+                               endCenter:   CGPoint(x: center, y: center), endRadius: center,
+                               options: .drawsAfterEndLocation)
+        return ctx.makeImage()
+    }
+
+    // MARK: - Visibility & Pulse
+
+    private func updateLaserVisibility() {
+        let on    = isLaserActive
+        let isGlow = settings.laserType == .glow
+        noAnimation {
+            laserShapeLayer.isHidden = !on || isGlow
+            laserGlowLayer.isHidden  = !on || !isGlow
+        }
+        updatePulseAnimation()
+    }
+
+    private func updatePulseAnimation() {
+        for key in ["pulseScale", "pulseOpacity"] {
+            laserShapeLayer.removeAnimation(forKey: key)
+            laserGlowLayer.removeAnimation(forKey: key)
+        }
+        noAnimation {
+            laserShapeLayer.transform = CATransform3DIdentity
+            laserGlowLayer.transform  = CATransform3DIdentity
+            laserShapeLayer.opacity   = 1
+            laserGlowLayer.opacity    = 1
+        }
+
+        guard isLaserActive, settings.laserAnimationEnabled else { return }
+
+        let halfPeriod = Double.pi / 1.8
+        let timing = CAMediaTimingFunction(name: .easeInEaseOut)
+
+        let scaleAnim = CABasicAnimation(keyPath: "transform")
+        scaleAnim.fromValue      = NSValue(caTransform3D: CATransform3DScale(CATransform3DIdentity, 0.9, 0.9, 1))
+        scaleAnim.toValue        = NSValue(caTransform3D: CATransform3DScale(CATransform3DIdentity, 1.1, 1.1, 1))
+        scaleAnim.duration       = halfPeriod
+        scaleAnim.autoreverses   = true
+        scaleAnim.repeatCount    = .infinity
+        scaleAnim.timingFunction = timing
+
+        let opacityAnim = CABasicAnimation(keyPath: "opacity")
+        opacityAnim.fromValue      = Float(0.65)
+        opacityAnim.toValue        = Float(1.0)
+        opacityAnim.duration       = halfPeriod
+        opacityAnim.autoreverses   = true
+        opacityAnim.repeatCount    = .infinity
+        opacityAnim.timingFunction = timing
+
+        let target: CALayer = settings.laserType == .glow ? laserGlowLayer : laserShapeLayer
+        target.add(scaleAnim,   forKey: "pulseScale")
+        target.add(opacityAnim, forKey: "pulseOpacity")
+    }
+
+    private func updateArrowStyle() {
+        let color = settings.arrowNSColor
+        noAnimation {
+            arrowLayer.strokeColor = color.cgColor
+            arrowLayer.fillColor   = color.cgColor
+            arrowLayer.lineWidth   = CGFloat(settings.arrowLineWidth)
+        }
+    }
+
+    private func updateFreehandStyle() {
+        let color   = settings.freehandNSColor
+        let opacity = CGFloat(settings.freehandOpacity)
+        noAnimation {
+            freehandLayer.strokeColor = color.withAlphaComponent(opacity).cgColor
+            freehandLayer.lineWidth   = CGFloat(settings.freehandLineWidth)
+        }
+    }
+
+    // MARK: - Position Updates
+
+    private func updatePositions() {
+        guard window != nil else { return }
+        let viewPt = convertScreenToView(mousePosition)
+        noAnimation {
+            laserShapeLayer.position = viewPt
+            laserGlowLayer.position  = viewPt
+        }
+        if isArrowDrawing { updateArrowPath() }
+    }
+
+    private func updateArrowPath() {
+        guard isArrowDrawing, let start = arrowStartPoint, window != nil else { return }
+        let startView = convertScreenToView(start)
+        let endView   = convertScreenToView(mousePosition)
+
+        let dx = endView.x - startView.x
+        let dy = endView.y - startView.y
+        let length = sqrt(dx * dx + dy * dy)
+        guard length > 5 else { return }
+
+        let angle     = atan2(dy, dx)
+        let headSize  = CGFloat(settings.arrowHeadSize)
+        let headAngle: CGFloat = .pi / 6
+
+        let p1 = CGPoint(x: endView.x - headSize * cos(angle - headAngle),
+                         y: endView.y - headSize * sin(angle - headAngle))
+        let p2 = CGPoint(x: endView.x - headSize * cos(angle + headAngle),
+                         y: endView.y - headSize * sin(angle + headAngle))
+
+        let path = CGMutablePath()
+        path.move(to: startView)
+        path.addLine(to: endView)
+        path.move(to: endView)
+        path.addLine(to: p1)
+        path.addLine(to: p2)
+        path.closeSubpath()
+
+        noAnimation { arrowLayer.path = path; arrowLayer.isHidden = false }
+    }
+
+    // MARK: - Freehand
 
     func startFreehandDraw() {
-        isFading = false
-        freehandAlpha = 1.0
+        freehandLayer.removeAnimation(forKey: "fade")
+        freehandPath = CGMutablePath()
         freehandViewPoints.removeAll(keepingCapacity: true)
-        freehandBoundingRect = .null
         isFreehandDrawing = true
-        needsDisplay = true
+        noAnimation { freehandLayer.opacity = 1; freehandLayer.path = nil; freehandLayer.isHidden = false }
     }
-
-    // Minimum squared distance (2pt) between consecutive freehand points.
-    // Prevents unbounded CGPath growth during slow or long drawing strokes.
-    private static let minFreehandDistanceSq: CGFloat = 4
 
     func addFreehandPoint(_ screenPoint: CGPoint) {
         guard isFreehandDrawing else { return }
         let viewPoint = convertScreenToView(screenPoint)
+
         if let last = freehandViewPoints.last {
             let dx = viewPoint.x - last.x
             let dy = viewPoint.y - last.y
             guard dx * dx + dy * dy >= Self.minFreehandDistanceSq else { return }
         }
+
+        if freehandViewPoints.isEmpty { freehandPath.move(to: viewPoint) }
+        else { freehandPath.addLine(to: viewPoint) }
         freehandViewPoints.append(viewPoint)
-        // Grow the bounding rect for use by the display link during fade.
-        let pad = CGFloat(settings.freehandLineWidth) / 2 + 2
-        let ptRect = CGRect(x: viewPoint.x - pad, y: viewPoint.y - pad, width: pad * 2, height: pad * 2)
-        freehandBoundingRect = freehandBoundingRect.isNull
-            ? ptRect
-            : freehandBoundingRect.union(ptRect)
-        // needsDisplay is already set by mousePosition.didSet for the same position update
+        noAnimation { freehandLayer.path = freehandPath }
     }
 
     func endFreehandDraw() {
         isFreehandDrawing = false
-        guard !freehandViewPoints.isEmpty else { return }
-        fadeDuration = settings.freehandFadeDuration
-        freehandAlpha = 1.0
-        fadeStartTime = CACurrentMediaTime()
-        isFading = true
-        // Ensure the display link is running for the fade animation.
-        caDisplayLink?.isPaused = false
+        guard !freehandViewPoints.isEmpty else { freehandLayer.isHidden = true; return }
+
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 1.0
+        fade.toValue   = 0.0
+        fade.duration  = settings.freehandFadeDuration
+        fade.fillMode  = .forwards
+        fade.isRemovedOnCompletion = false
+
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { [weak self] in
+            guard let self else { return }
+            self.noAnimation { self.freehandLayer.isHidden = true; self.freehandLayer.opacity = 1 }
+            self.freehandLayer.removeAnimation(forKey: "fade")
+            self.freehandLayer.path = nil
+            self.freehandPath = CGMutablePath()
+            self.freehandViewPoints.removeAll(keepingCapacity: true)
+        }
+        freehandLayer.add(fade, forKey: "fade")
+        CATransaction.commit()
     }
 
-    // MARK: - Display Link
-
-    private func startDisplayLink() {
-        let proxy = DisplayLinkProxy()
-        proxy.view = self
-        // NSView.displayLink automatically uses the refresh rate of the screen
-        // this view is displayed on, updating correctly when the window moves screens.
-        let link = displayLink(target: proxy, selector: #selector(DisplayLinkProxy.tick(_:)))
-        link.add(to: .main, forMode: .common)
-        caDisplayLink = link
-        caDisplayLinkProxy = proxy
-    }
-
-    fileprivate func stopDisplayLink() {
-        caDisplayLink?.invalidate()
-        caDisplayLink = nil
-        caDisplayLinkProxy = nil
-    }
-
-    // Fired directly on the main thread by CADisplayLink — no DispatchQueue.main.async needed.
-    fileprivate func displayLinkTick(_ link: CADisplayLink) {
-        // link.timestamp is the vsync time; cap dt so sleep/wake never causes a phase jump.
-        let now = link.timestamp
-        let dt = lastDisplayLinkTime > 0
-            ? min(now - lastDisplayLinkTime, 1.0 / 30.0)
-            : 0
-        lastDisplayLinkTime = now
-
-        let animating = settings.laserAnimationEnabled
-        if animating {
-            // 1.8 rad/s = constant pulse speed regardless of display refresh rate
-            animationPhase += CGFloat(dt * 1.8)
-            if animationPhase > .pi * 2 { animationPhase -= .pi * 2 }
-        }
-
-        if isFading {
-            let elapsed = now - fadeStartTime
-            let progress = min(elapsed / fadeDuration, 1.0)
-            freehandAlpha = CGFloat(1.0 - progress)
-            if progress >= 1.0 {
-                isFading = false
-                freehandViewPoints.removeAll(keepingCapacity: true)
-                freehandBoundingRect = .null
-                freehandAlpha = 0
-            }
-        }
-
-        guard animating || isFading else {
-            // Nothing to animate — suspend until animation or fading resumes.
-            caDisplayLink?.isPaused = true
-            lastDisplayLinkTime = 0
-            return
-        }
-
-        // Issue a tight setNeedsDisplay rather than invalidating the whole screen.
-        // This is the key fix for CPU: clearing a ~100×100pt rect costs a fraction
-        // of clearing a full 5K screen at 60-120Hz.
-        var dirty = CGRect.null
-        if animating && (!isFading || isLaserActive) {
-            let viewPt = convertScreenToView(mousePosition)
-            dirty = dirty.union(laserDirtyRect(from: viewPt, to: viewPt))
-        }
-        if isFading, !freehandBoundingRect.isNull {
-            dirty = dirty.union(freehandBoundingRect)
-        }
-        if !dirty.isNull {
-            setNeedsDisplay(dirty)
-        }
-    }
-
-    // MARK: - Drawing
-
-    override func draw(_ dirtyRect: NSRect) {
-        guard let context = NSGraphicsContext.current?.cgContext else { return }
-        // Clear only the invalidated region, not the entire screen surface.
-        context.clear(dirtyRect)
-
-        let hasFreehand = isFreehandDrawing || isFading
-        let needsViewPoint = isLaserActive || !hasFreehand || isArrowDrawing
-        let viewPoint = needsViewPoint ? convertScreenToView(mousePosition) : .zero
-
-        if !hasFreehand || isLaserActive {
-            drawLaser(in: context, at: viewPoint)
-        }
-
-        if isArrowDrawing, let start = arrowStartPoint {
-            let startView = convertScreenToView(start)
-            drawArrow(in: context, from: startView, to: viewPoint)
-        }
-
-        if isFreehandDrawing || (isFading && freehandAlpha > 0) {
-            drawFreehand(in: context)
-        }
-    }
+    // MARK: - Utilities
 
     private func convertScreenToView(_ screenPoint: CGPoint) -> CGPoint {
         guard let window = self.window else { return screenPoint }
-        let windowPoint = window.convertPoint(fromScreen: screenPoint)
-        return convert(windowPoint, from: nil)
+        return convert(window.convertPoint(fromScreen: screenPoint), from: nil)
     }
 
-    private func laserDirtyRect(from a: CGPoint, to b: CGPoint) -> CGRect {
-        // Read laserSize once; padding covers pulse (±10%) and glow gradient edge.
-        let radius = CGFloat(settings.laserSize) * 1.2 + 10
-        let rectA = CGRect(x: a.x - radius, y: a.y - radius, width: radius * 2, height: radius * 2)
-        let rectB = CGRect(x: b.x - radius, y: b.y - radius, width: radius * 2, height: radius * 2)
-        return rectA.union(rectB)
-    }
-
-    // MARK: - Laser Rendering
-
-    private func drawLaser(in context: CGContext, at point: CGPoint) {
-        let size = CGFloat(settings.laserSize)
-        let color = settings.laserDisplayColor
-        let borderWidth = CGFloat(settings.laserBorderWidth)
-        let animated = settings.laserAnimationEnabled
-        // If animation was just re-enabled while the link was suspended, wake it.
-        if animated, caDisplayLink?.isPaused == true {
-            caDisplayLink?.isPaused = false
-        }
-        let pulse: CGFloat = animated ? 1.0 + 0.1 * sin(animationPhase) : 1.0
-
-        switch settings.laserType {
-        case .dot:
-            drawDot(in: context, at: point, size: size * pulse, color: color)
-        case .ring:
-            drawRing(in: context, at: point, size: size * pulse, color: color, borderWidth: borderWidth)
-        case .glow:
-            drawGlow(in: context, at: point, size: size * pulse, color: color)
-        }
-    }
-
-    private func drawDot(in context: CGContext, at point: CGPoint, size: CGFloat, color: NSColor) {
-        let rect = CGRect(x: point.x - size / 2, y: point.y - size / 2, width: size, height: size)
-        context.setFillColor(color.cgColor)
-        context.fillEllipse(in: rect)
-    }
-
-    private func drawRing(in context: CGContext, at point: CGPoint, size: CGFloat, color: NSColor, borderWidth: CGFloat) {
-        let rect = CGRect(x: point.x - size / 2, y: point.y - size / 2, width: size, height: size)
-        context.setStrokeColor(color.cgColor)
-        context.setLineWidth(borderWidth)
-        context.strokeEllipse(in: rect.insetBy(dx: borderWidth / 2, dy: borderWidth / 2))
-    }
-
-    private func drawGlow(in context: CGContext, at point: CGPoint, size: CGFloat, color: NSColor) {
-        if cachedGradient == nil
-            || cachedGradientColorHex != settings.laserColorHex
-            || cachedGradientOpacity != settings.laserOpacity {
-            cachedGradientColorHex = settings.laserColorHex
-            cachedGradientOpacity = settings.laserOpacity
-            cachedGradient = CGGradient(
-                colorsSpace: CGColorSpaceCreateDeviceRGB(),
-                colors: [
-                    color.cgColor,
-                    color.withAlphaComponent(0.3).cgColor,
-                    color.withAlphaComponent(0.0).cgColor
-                ] as CFArray,
-                locations: [0, 0.4, 1.0]
-            )
-        }
-        guard let gradient = cachedGradient else { return }
-
-        context.drawRadialGradient(
-            gradient,
-            startCenter: point, startRadius: 0,
-            endCenter: point, endRadius: size,
-            options: .drawsAfterEndLocation
-        )
-    }
-
-    // MARK: - Arrow Rendering
-
-    private func drawArrow(in context: CGContext, from start: CGPoint, to end: CGPoint) {
-        let color = settings.arrowNSColor
-        let lineWidth = CGFloat(settings.arrowLineWidth)
-        let headSize = CGFloat(settings.arrowHeadSize)
-
-        let dx = end.x - start.x
-        let dy = end.y - start.y
-        let length = sqrt(dx * dx + dy * dy)
-
-        guard length > 5 else { return }
-
-        let angle = atan2(dy, dx)
-        let cgColor = color.cgColor
-
-        context.setStrokeColor(cgColor)
-        context.setLineWidth(lineWidth)
-        context.setLineCap(.round)
-
-        context.move(to: start)
-        context.addLine(to: end)
-        context.strokePath()
-
-        let headAngle: CGFloat = .pi / 6
-        let p1 = CGPoint(
-            x: end.x - headSize * cos(angle - headAngle),
-            y: end.y - headSize * sin(angle - headAngle)
-        )
-        let p2 = CGPoint(
-            x: end.x - headSize * cos(angle + headAngle),
-            y: end.y - headSize * sin(angle + headAngle)
-        )
-
-        context.setFillColor(cgColor)
-        context.move(to: end)
-        context.addLine(to: p1)
-        context.addLine(to: p2)
-        context.closePath()
-        context.fillPath()
-    }
-
-    // MARK: - Freehand Rendering
-
-    private func drawFreehand(in context: CGContext) {
-        guard freehandViewPoints.count > 1 else { return }
-
-        let baseOpacity = CGFloat(settings.freehandOpacity)
-        let lineWidth = CGFloat(settings.freehandLineWidth)
-        let alpha = baseOpacity * freehandAlpha
-        // CGColor.copy(alpha:) is a CF-level operation — much cheaper than NSColor.withAlphaComponent
-        // which allocates a full NSColor object on every fade frame.
-        let baseCGColor = settings.freehandNSColor.cgColor
-        let cgColor = baseCGColor.copy(alpha: alpha) ?? baseCGColor
-
-        context.setStrokeColor(cgColor)
-        context.setLineWidth(lineWidth)
-        context.setLineCap(.round)
-        context.setLineJoin(.round)
-
-        context.move(to: freehandViewPoints[0])
-        for point in freehandViewPoints.dropFirst() {
-            context.addLine(to: point)
-        }
-        context.strokePath()
+    private func noAnimation(_ block: () -> Void) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        block()
+        CATransaction.commit()
     }
 }
