@@ -20,8 +20,14 @@ final class SettingsStore: ObservableObject {
         set { laserColorHex = newValue.toHex() ?? "#FF3B30" }
     }
 
+    private var _laserNSColor: NSColor?
+    private var _laserColorHexCached: String = ""
     var laserNSColor: NSColor {
-        NSColor(laserColor)
+        if _laserNSColor == nil || _laserColorHexCached != laserColorHex {
+            _laserColorHexCached = laserColorHex
+            _laserNSColor = NSColor(laserColor)
+        }
+        return _laserNSColor!
     }
 
     // MARK: - Arrow Settings
@@ -35,8 +41,14 @@ final class SettingsStore: ObservableObject {
         set { arrowColorHex = newValue.toHex() ?? "#007AFF" }
     }
 
+    private var _arrowNSColor: NSColor?
+    private var _arrowColorHexCached: String = ""
     var arrowNSColor: NSColor {
-        NSColor(arrowColor)
+        if _arrowNSColor == nil || _arrowColorHexCached != arrowColorHex {
+            _arrowColorHexCached = arrowColorHex
+            _arrowNSColor = NSColor(arrowColor)
+        }
+        return _arrowNSColor!
     }
 
     // MARK: - Freehand Draw Settings
@@ -51,8 +63,14 @@ final class SettingsStore: ObservableObject {
         set { freehandColorHex = newValue.toHex() ?? "#007AFF" }
     }
 
+    private var _freehandNSColor: NSColor?
+    private var _freehandColorHexCached: String = ""
     var freehandNSColor: NSColor {
-        NSColor(freehandColor)
+        if _freehandNSColor == nil || _freehandColorHexCached != freehandColorHex {
+            _freehandColorHexCached = freehandColorHex
+            _freehandNSColor = NSColor(freehandColor)
+        }
+        return _freehandNSColor!
     }
 
     private init() {}

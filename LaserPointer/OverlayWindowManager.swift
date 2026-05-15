@@ -126,20 +126,21 @@ final class OverlayWindow: NSPanel {
 
 final class OverlayView: NSView {
     var mousePosition: CGPoint = .zero {
-        didSet { needsDisplay = true }
+        didSet { if mousePosition != oldValue { needsDisplay = true } }
     }
 
     var isArrowDrawing: Bool = false {
-        didSet { needsDisplay = true }
+        didSet { if isArrowDrawing != oldValue { needsDisplay = true } }
     }
 
     var arrowStartPoint: CGPoint? = nil {
-        didSet { needsDisplay = true }
+        didSet { if arrowStartPoint != oldValue { needsDisplay = true } }
     }
 
     // MARK: Freehand State
     private(set) var isFreehandDrawing: Bool = false
     private var freehandPoints: [CGPoint] = []
+    private var freehandViewPoints: [CGPoint] = []
     private var freehandAlpha: CGFloat = 1.0
     private var isFading: Bool = false
     private var fadeStartTime: CFTimeInterval = 0
@@ -149,6 +150,9 @@ final class OverlayView: NSView {
     private var displayLink: CVDisplayLink?
     private var displayLinkRetainedSelf: UnsafeMutableRawPointer?
     private var animationPhase: CGFloat = 0
+
+    private var cachedGradient: CGGradient?
+    private var cachedGradientKey: String = ""
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -172,6 +176,7 @@ final class OverlayView: NSView {
         isFading = false
         freehandAlpha = 1.0
         freehandPoints = []
+        freehandViewPoints = []
         isFreehandDrawing = true
         needsDisplay = true
     }
@@ -179,6 +184,7 @@ final class OverlayView: NSView {
     func addFreehandPoint(_ screenPoint: CGPoint) {
         guard isFreehandDrawing else { return }
         freehandPoints.append(screenPoint)
+        freehandViewPoints.append(convertScreenToView(screenPoint))
         needsDisplay = true
     }
 
@@ -202,8 +208,11 @@ final class OverlayView: NSView {
         CVDisplayLinkSetOutputCallback(displayLink, { (_, _, _, _, _, userInfo) -> CVReturn in
             let view = Unmanaged<OverlayView>.fromOpaque(userInfo!).takeUnretainedValue()
             DispatchQueue.main.async {
-                view.animationPhase += 0.03
-                if view.animationPhase > .pi * 2 { view.animationPhase -= .pi * 2 }
+                let animating = view.settings.laserAnimationEnabled
+                if animating {
+                    view.animationPhase += 0.03
+                    if view.animationPhase > .pi * 2 { view.animationPhase -= .pi * 2 }
+                }
 
                 // Update freehand fade
                 if view.isFading {
@@ -213,11 +222,16 @@ final class OverlayView: NSView {
                     if progress >= 1.0 {
                         view.isFading = false
                         view.freehandPoints = []
+                        view.freehandViewPoints = []
                         view.freehandAlpha = 0
                     }
                 }
 
-                view.needsDisplay = true
+                // Only force a redraw if the display link itself has something to animate.
+                // Mouse-movement redraws are handled by the mousePosition property observer.
+                if animating || view.isFading {
+                    view.needsDisplay = true
+                }
             }
             return kCVReturnSuccess
         }, retained)
@@ -302,15 +316,20 @@ final class OverlayView: NSView {
     }
 
     private func drawGlow(in context: CGContext, at point: CGPoint, size: CGFloat, color: NSColor) {
-        let gradient = CGGradient(
-            colorsSpace: CGColorSpaceCreateDeviceRGB(),
-            colors: [
-                color.cgColor,
-                color.withAlphaComponent(0.3).cgColor,
-                color.withAlphaComponent(0.0).cgColor
-            ] as CFArray,
-            locations: [0, 0.4, 1.0]
-        )!
+        let key = settings.laserColorHex + String(settings.laserOpacity)
+        if cachedGradient == nil || cachedGradientKey != key {
+            cachedGradientKey = key
+            cachedGradient = CGGradient(
+                colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                colors: [
+                    color.cgColor,
+                    color.withAlphaComponent(0.3).cgColor,
+                    color.withAlphaComponent(0.0).cgColor
+                ] as CFArray,
+                locations: [0, 0.4, 1.0]
+            )
+        }
+        guard let gradient = cachedGradient else { return }
 
         context.drawRadialGradient(
             gradient,
@@ -364,7 +383,7 @@ final class OverlayView: NSView {
     // MARK: - Freehand Rendering
 
     private func drawFreehand(in context: CGContext) {
-        guard freehandPoints.count > 1 else { return }
+        guard freehandViewPoints.count > 1 else { return }
 
         let baseColor = settings.freehandNSColor
         let baseOpacity = CGFloat(settings.freehandOpacity)
@@ -372,15 +391,13 @@ final class OverlayView: NSView {
         let alpha = baseOpacity * freehandAlpha
         let color = baseColor.withAlphaComponent(alpha)
 
-        let viewPoints = freehandPoints.map { convertScreenToView($0) }
-
         context.setStrokeColor(color.cgColor)
         context.setLineWidth(lineWidth)
         context.setLineCap(.round)
         context.setLineJoin(.round)
 
-        context.move(to: viewPoints[0])
-        for point in viewPoints.dropFirst() {
+        context.move(to: freehandViewPoints[0])
+        for point in freehandViewPoints.dropFirst() {
             context.addLine(to: point)
         }
         context.strokePath()

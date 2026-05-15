@@ -17,6 +17,7 @@ final class MouseTracker: ObservableObject {
         source.schedule(deadline: .now(), repeating: .milliseconds(8))
         source.setEventHandler { [weak self] in
             let loc = NSEvent.mouseLocation
+            guard loc != self?.mouseLocation else { return }
             self?.mouseLocation = loc
         }
         source.resume()
