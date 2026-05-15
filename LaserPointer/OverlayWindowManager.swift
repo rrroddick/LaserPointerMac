@@ -23,6 +23,10 @@ final class OverlayWindowManager {
 
     func hideOverlay() {
         for (_, window) in overlayWindows {
+            // Invalidate the display link before releasing the window so the
+            // CADisplayLink strong-target reference is dropped here, letting
+            // OverlayView reach retain count 0 and deinit normally.
+            window.overlayView.stopDisplayLink()
             window.orderOut(nil)
         }
         overlayWindows.removeAll()
@@ -118,6 +122,18 @@ final class OverlayWindow: NSPanel {
     }
 }
 
+// MARK: - Display Link Proxy
+// Holds a weak reference to OverlayView so CADisplayLink (which strongly retains
+// its target) does not form a retain cycle with the view.
+
+private final class DisplayLinkProxy: NSObject {
+    weak var view: OverlayView?
+
+    @objc func tick(_ link: CADisplayLink) {
+        view?.displayLinkTick(link)
+    }
+}
+
 // MARK: - Overlay View (renders laser, arrow, and freehand)
 
 final class OverlayView: NSView {
@@ -155,8 +171,8 @@ final class OverlayView: NSView {
     private var fadeDuration: CFTimeInterval = 1.0
 
     private let settings = SettingsStore.shared
-    private var displayLink: CVDisplayLink?
-    private var displayLinkRetainedSelf: UnsafeMutableRawPointer?
+    private var caDisplayLink: CADisplayLink?
+    private var caDisplayLinkProxy: DisplayLinkProxy?
     private var animationPhase: CGFloat = 0
 
     private var cachedGradient: CGGradient?
@@ -213,74 +229,63 @@ final class OverlayView: NSView {
         fadeStartTime = CACurrentMediaTime()
         isFading = true
         // Ensure the display link is running for the fade animation.
-        if let link = displayLink, !CVDisplayLinkIsRunning(link) {
-            CVDisplayLinkStart(link)
-        }
+        caDisplayLink?.isPaused = false
     }
 
     // MARK: - Display Link
 
     private func startDisplayLink() {
-        CVDisplayLinkCreateWithActiveCGDisplays(&displayLink)
-        guard let displayLink else { return }
-
-        let retained = Unmanaged.passRetained(self).toOpaque()
-        displayLinkRetainedSelf = retained
-        CVDisplayLinkSetOutputCallback(displayLink, { (_, _, _, _, _, userInfo) -> CVReturn in
-            let view = Unmanaged<OverlayView>.fromOpaque(userInfo!).takeUnretainedValue()
-            DispatchQueue.main.async {
-                let now = CACurrentMediaTime()
-                // Cap dt to one ~30fps frame so sleep/wake or scheduler delays
-                // never cause a visible phase jump on resume.
-                let dt = view.lastDisplayLinkTime > 0
-                    ? min(now - view.lastDisplayLinkTime, 1.0 / 30.0)
-                    : 0
-                view.lastDisplayLinkTime = now
-
-                let animating = view.settings.laserAnimationEnabled
-                if animating {
-                    // 1.8 rad/s = constant pulse speed regardless of display refresh rate
-                    view.animationPhase += CGFloat(dt * 1.8)
-                    if view.animationPhase > .pi * 2 { view.animationPhase -= .pi * 2 }
-                }
-
-                if view.isFading {
-                    let elapsed = now - view.fadeStartTime
-                    let progress = min(elapsed / view.fadeDuration, 1.0)
-                    view.freehandAlpha = CGFloat(1.0 - progress)
-                    if progress >= 1.0 {
-                        view.isFading = false
-                        view.freehandViewPoints.removeAll(keepingCapacity: true)
-                        view.freehandAlpha = 0
-                    }
-                }
-
-                // Only force a redraw if the display link itself has something to animate.
-                // Mouse-movement redraws are handled by the mousePosition property observer.
-                if animating || view.isFading {
-                    view.needsDisplay = true
-                } else if let link = view.displayLink {
-                    // Nothing left to animate — suspend the display link to stop
-                    // generating pointless async closures at full refresh rate.
-                    CVDisplayLinkStop(link)
-                    // Reset timestamp so the next resume starts with dt = 0,
-                    // preventing an animationPhase jump proportional to idle time.
-                    view.lastDisplayLinkTime = 0
-                }
-            }
-            return kCVReturnSuccess
-        }, retained)
-
-        CVDisplayLinkStart(displayLink)
+        let proxy = DisplayLinkProxy()
+        proxy.view = self
+        // NSView.displayLink automatically uses the refresh rate of the screen
+        // this view is displayed on, updating correctly when the window moves screens.
+        let link = displayLink(target: proxy, selector: #selector(DisplayLinkProxy.tick(_:)))
+        link.add(to: .main, forMode: .common)
+        caDisplayLink = link
+        caDisplayLinkProxy = proxy
     }
 
-    private func stopDisplayLink() {
-        guard let displayLink else { return }
-        CVDisplayLinkStop(displayLink)
-        self.displayLink = nil
-        if let ptr = displayLinkRetainedSelf {
-            Unmanaged<OverlayView>.fromOpaque(ptr).release()
-            displayLinkRetainedSelf = nil
+    fileprivate func stopDisplayLink() {
+        caDisplayLink?.invalidate()
+        caDisplayLink = nil
+        caDisplayLinkProxy = nil
+    }
+
+    // Fired directly on the main thread by CADisplayLink — no DispatchQueue.main.async needed.
+    fileprivate func displayLinkTick(_ link: CADisplayLink) {
+        // link.timestamp is the vsync time; cap dt so sleep/wake never causes a phase jump.
+        let now = link.timestamp
+        let dt = lastDisplayLinkTime > 0
+            ? min(now - lastDisplayLinkTime, 1.0 / 30.0)
+            : 0
+        lastDisplayLinkTime = now
+
+        let animating = settings.laserAnimationEnabled
+        if animating {
+            // 1.8 rad/s = constant pulse speed regardless of display refresh rate
+            animationPhase += CGFloat(dt * 1.8)
+            if animationPhase > .pi * 2 { animationPhase -= .pi * 2 }
+        }
+
+        if isFading {
+            let elapsed = now - fadeStartTime
+            let progress = min(elapsed / fadeDuration, 1.0)
+            freehandAlpha = CGFloat(1.0 - progress)
+            if progress >= 1.0 {
+                isFading = false
+                freehandViewPoints.removeAll(keepingCapacity: true)
+                freehandAlpha = 0
+            }
+        }
+
+        // Only redraw if the display link itself has something to animate.
+        // Mouse-movement redraws are handled by the mousePosition property observer.
+        if animating || isFading {
+            needsDisplay = true
+        } else {
+            // Nothing to animate — suspend until animation or fading resumes.
+            caDisplayLink?.isPaused = true
+            lastDisplayLinkTime = 0
         }
     }
 
@@ -330,10 +335,9 @@ final class OverlayView: NSView {
         let color = settings.laserDisplayColor
         let borderWidth = CGFloat(settings.laserBorderWidth)
         let animated = settings.laserAnimationEnabled
-        // If animation was just re-enabled, wake the display link.
-        // It self-suspends when no longer needed, so we restart it here on the next draw.
-        if animated, let link = displayLink, !CVDisplayLinkIsRunning(link) {
-            CVDisplayLinkStart(link)
+        // If animation was just re-enabled while the link was suspended, wake it.
+        if animated, caDisplayLink?.isPaused == true {
+            caDisplayLink?.isPaused = false
         }
         let pulse: CGFloat = animated ? 1.0 + 0.1 * sin(animationPhase) : 1.0
 
