@@ -131,7 +131,7 @@ final class OverlayView: NSView {
             if !isArrowDrawing, !isFreehandDrawing, !isFading, window != nil {
                 let oldView = convertScreenToView(oldValue)
                 let newView = convertScreenToView(mousePosition)
-                setNeedsDisplay(laserDirtyRect(at: oldView).union(laserDirtyRect(at: newView)))
+                setNeedsDisplay(laserDirtyRect(from: oldView, to: newView))
             } else {
                 needsDisplay = true
             }
@@ -162,6 +162,7 @@ final class OverlayView: NSView {
     private var cachedGradient: CGGradient?
     private var cachedGradientColorHex: String = ""
     private var cachedGradientOpacity: Double = -1
+    private var lastDisplayLinkTime: CFTimeInterval = 0
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -224,9 +225,14 @@ final class OverlayView: NSView {
         CVDisplayLinkSetOutputCallback(displayLink, { (_, _, _, _, _, userInfo) -> CVReturn in
             let view = Unmanaged<OverlayView>.fromOpaque(userInfo!).takeUnretainedValue()
             DispatchQueue.main.async {
+                let now = CACurrentMediaTime()
+                let dt = view.lastDisplayLinkTime > 0 ? now - view.lastDisplayLinkTime : 0
+                view.lastDisplayLinkTime = now
+
                 let animating = view.settings.laserAnimationEnabled
                 if animating {
-                    view.animationPhase += 0.03
+                    // 1.8 rad/s = constant pulse speed regardless of display refresh rate
+                    view.animationPhase += CGFloat(dt * 1.8)
                     if view.animationPhase > .pi * 2 { view.animationPhase -= .pi * 2 }
                 }
 
@@ -236,7 +242,7 @@ final class OverlayView: NSView {
                     view.freehandAlpha = CGFloat(1.0 - progress)
                     if progress >= 1.0 {
                         view.isFading = false
-                        view.freehandViewPoints = []
+                        view.freehandViewPoints.removeAll(keepingCapacity: true)
                         view.freehandAlpha = 0
                     }
                 }
@@ -294,11 +300,12 @@ final class OverlayView: NSView {
         return convert(windowPoint, from: nil)
     }
 
-    private func laserDirtyRect(at viewPoint: CGPoint) -> CGRect {
-        // Extra padding covers pulse animation (±10% size) and the glow gradient edge.
+    private func laserDirtyRect(from a: CGPoint, to b: CGPoint) -> CGRect {
+        // Read laserSize once; padding covers pulse (±10%) and glow gradient edge.
         let radius = CGFloat(settings.laserSize) * 1.2 + 10
-        return CGRect(x: viewPoint.x - radius, y: viewPoint.y - radius,
-                      width: radius * 2, height: radius * 2)
+        let rectA = CGRect(x: a.x - radius, y: a.y - radius, width: radius * 2, height: radius * 2)
+        let rectB = CGRect(x: b.x - radius, y: b.y - radius, width: radius * 2, height: radius * 2)
+        return rectA.union(rectB)
     }
 
     // MARK: - Laser Rendering
@@ -411,8 +418,8 @@ final class OverlayView: NSView {
         let alpha = baseOpacity * freehandAlpha
         // CGColor.copy(alpha:) is a CF-level operation — much cheaper than NSColor.withAlphaComponent
         // which allocates a full NSColor object on every fade frame.
-        let cgColor = settings.freehandNSColor.cgColor.copy(alpha: alpha)
-            ?? settings.freehandNSColor.cgColor
+        let baseCGColor = settings.freehandNSColor.cgColor
+        let cgColor = baseCGColor.copy(alpha: alpha) ?? baseCGColor
 
         context.setStrokeColor(cgColor)
         context.setLineWidth(lineWidth)
