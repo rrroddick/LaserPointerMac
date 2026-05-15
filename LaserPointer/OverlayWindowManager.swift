@@ -230,7 +230,11 @@ final class OverlayView: NSView {
             let view = Unmanaged<OverlayView>.fromOpaque(userInfo!).takeUnretainedValue()
             DispatchQueue.main.async {
                 let now = CACurrentMediaTime()
-                let dt = view.lastDisplayLinkTime > 0 ? now - view.lastDisplayLinkTime : 0
+                // Cap dt to one ~30fps frame so sleep/wake or scheduler delays
+                // never cause a visible phase jump on resume.
+                let dt = view.lastDisplayLinkTime > 0
+                    ? min(now - view.lastDisplayLinkTime, 1.0 / 30.0)
+                    : 0
                 view.lastDisplayLinkTime = now
 
                 let animating = view.settings.laserAnimationEnabled
@@ -259,6 +263,9 @@ final class OverlayView: NSView {
                     // Nothing left to animate — suspend the display link to stop
                     // generating pointless async closures at full refresh rate.
                     CVDisplayLinkStop(link)
+                    // Reset timestamp so the next resume starts with dt = 0,
+                    // preventing an animationPhase jump proportional to idle time.
+                    view.lastDisplayLinkTime = 0
                 }
             }
             return kCVReturnSuccess
