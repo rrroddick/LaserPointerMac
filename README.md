@@ -39,23 +39,23 @@ L'app crea un "puntatore laser" virtuale attorno al cursore del mouse, permetten
 
 ### 📥 Download (Pronto all'Uso)
 
-Puoi scaricare l'app già compilata e pronta all'uso dalla pagina **[Releases](https://github.com/rrroddick/LaserPointerMac/releases)** di questo repository. Estrai lo zip e trascina `LaserPointerMac.app` nella cartella **Applicazioni**, poi avviala!
+Puoi scaricare l'app già compilata e pronta all'uso dalla pagina **[Releases](https://github.com/rrroddick/LaserPointerMac/releases)** di questo repository. Estrai lo zip e trascina `LaserPointer.app` nella cartella **Applicazioni**, poi avviala! L'app è distribuita **non firmata**: al primo avvio fai click-destro → *Apri* (oppure rimuovi la quarantena con `xattr -dr com.apple.quarantine /Applications/LaserPointer.app`).
 
 ### 🛠 Dettagli Tecnici / Architettura
 
 - **Linguaggio**: Swift 5+
-- **Framework**: SwiftUI (Menu Bar e Settings), AppKit (Overlay, Event Monitoring), CoreGraphics (Rendering ad alte performance).
+- **Framework**: SwiftUI (Menu Bar e Settings), AppKit (Overlay, Event Monitoring), Core Animation + Core Graphics (Rendering ad alte performance).
 - **Architettura Rendering**: 
-  - L'overlay del laser non è basato su view di SwiftUI (sarebbero troppo lente per seguire il mouse a 120Hz/60Hz), ma è un `NSPanel` trasparente (`.nonactivatingPanel`, `ignoresMouseEvents = true`, Level `CGWindowLevelForKey(.overlayWindow)`) con dentro una `NSView` custom.
-  - Il disegno di laser e frecce avviene a bassissimo livello tramite `CGContext`.
-  - Animazione e Tracking pilotati da un `CVDisplayLink` per garantire i massimi FPS sincronizzati con il refresh rate del monitor.
-- **Event Monitoring**: Il tracciamento del cursore usa `NSEvent.mouseLocation`. Il rilevamento avanzato della tastiera (per il draw della freccia e del freehand) utilizza la libreria open-source **[KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts)**.
+  - Viene creato un `NSPanel` trasparente e click-through per **ogni schermo** (`.nonactivatingPanel`, `ignoresMouseEvents = true`, Level `CGWindowLevelForKey(.overlayWindow)`, su tutti gli Spaces) con dentro una `NSView` custom: troppo lento usare le view di SwiftUI per seguire il mouse a 60/120Hz.
+  - Il rendering è basato su **Core Animation layer** (GPU): `dot`/`ring` con `CAShapeLayer`, `glow` con un gradiente radiale pre-renderizzato una sola volta in un `CGImage` dentro un `CALayer`. Frecce e disegno libero sono `CAShapeLayer`. Le mutazioni sincrone dei layer sono incapsulate in transazioni con le azioni implicite disabilitate, così girano solo le animazioni esplicite (pulsazione e dissolvenza, via `CABasicAnimation`).
+  - Il tracciamento del cursore avviene con un timer ad alta frequenza (~120Hz) che fa polling di `NSEvent.mouseLocation`.
+- **Event Monitoring**: Il rilevamento avanzato della tastiera (per il draw della freccia e del freehand) utilizza la libreria open-source **[KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts)**. Le scorciatoie a modificatore singolo (solo `Ctrl` / solo `Option`) sono rilevate facendo polling di `NSEvent.modifierFlags` a 60Hz, dato che il monitoraggio globale di `flagsChanged` è inaffidabile su macOS 14+.
 - **Persistenza**: Implementata con `@AppStorage` (UserDefaults).
 
 ### 🚀 Installazione & Compilazione (Per Sviluppatori)
 
 1. Clona il repository.
-2. Apri `LaserPointerMac.xcodeproj` con Xcode 15 o superiore.
+2. Apri `LaserPointer.xcodeproj` con Xcode 15 o superiore.
 3. Attendi la risoluzione automatica della dipendenza SPM (`KeyboardShortcuts`).
 4. Seleziona il tuo Mac come target di destinazione e fai Build & Run (`⌘ + R`).
 5. **Permessi**: Al primo avvio, l'app richiederà i permessi di **Accessibilità** (tramite le Impostazioni di Sistema) necessari per intercettare le scorciatoie da tastiera a livello globale. (MacOS 14+ potrebbe richiedere implicitamente anche *Monitoraggio Input*).
@@ -83,23 +83,23 @@ It creates a virtual "laser pointer" effect around your mouse cursor, allowing y
 
 ### 📥 Download (Ready-to-Use)
 
-You can download the pre-compiled, ready-to-use application from the **[Releases](https://github.com/rrroddick/LaserPointerMac/releases)** page of this repository. Just extract the zip and drag `LaserPointerMac.app` to your **Applications** folder, then run it!
+You can download the pre-compiled, ready-to-use application from the **[Releases](https://github.com/rrroddick/LaserPointerMac/releases)** page of this repository. Just extract the zip and drag `LaserPointer.app` to your **Applications** folder, then run it! The app ships **unsigned**, so on first launch right-click → *Open* (or clear quarantine with `xattr -dr com.apple.quarantine /Applications/LaserPointer.app`).
 
 ### 🛠 Technical Architecture under the hood
 
 - **Language**: Swift 5+
-- **Frameworks**: SwiftUI (Menu Bar, Settings UI), AppKit (Overlays, Event handling), Core Graphics (High-performance rendering).
+- **Frameworks**: SwiftUI (Menu Bar, Settings UI), AppKit (Overlays, Event handling), Core Animation + Core Graphics (High-performance rendering).
 - **Rendering Architecture**: 
-  - To achieve maximum 60/120fps tracking, the laser is **not** rendered via SwiftUI `.overlay`. Instead, the app generates a transparent, click-through `NSPanel` (`.nonactivatingPanel`, `ignoresMouseEvents = true`, Level `CGWindowLevelForKey(.overlayWindow)`) containing a custom `NSView`.
-  - Rendering for lasers, gradients, and arrows is done at a low level using `CGContext`.
-  - Tracking and animations are synchronized with the monitor's refresh rate using a `CVDisplayLink`.
-- **Event Monitoring**: Mouse polling utilizes `NSEvent.mouseLocation`. Advanced global hotkey listening (for the arrow and freehand mechanics) is powered by the excellent open-source library **[KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts)**.
+  - To achieve maximum 60/120fps tracking, the laser is **not** rendered via SwiftUI `.overlay`. Instead, the app generates a transparent, click-through `NSPanel` **per display** (`.nonactivatingPanel`, `ignoresMouseEvents = true`, Level `CGWindowLevelForKey(.overlayWindow)`, joining all Spaces) containing a custom `NSView`.
+  - Rendering is **Core Animation layer** based (GPU): `dot`/`ring` use a `CAShapeLayer`, while `glow` uses a radial gradient pre-rendered once into a `CGImage` hosted in a plain `CALayer`. Arrows and freehand strokes are `CAShapeLayer`s. Synchronous layer mutations are wrapped in transactions with implicit actions disabled, so only the explicit pulse and fade-out animations (via `CABasicAnimation`) run.
+  - Cursor tracking uses a high-frequency (~120Hz) timer polling `NSEvent.mouseLocation`.
+- **Event Monitoring**: Advanced global hotkey listening (for the arrow and freehand mechanics) is powered by the excellent open-source library **[KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts)**. Modifier-only shortcuts (`Ctrl` alone / `Option` alone) are detected by polling `NSEvent.modifierFlags` at 60Hz, since global `flagsChanged` monitoring is unreliable on macOS 14+.
 - **Persistence**: Managed automatically via state-driven `@AppStorage` (UserDefaults).
 
 ### 🚀 Build & Run
 
 1. Clone the repository.
-2. Open `LaserPointerMac.xcodeproj` with Xcode 15 or newer.
+2. Open `LaserPointer.xcodeproj` with Xcode 15 or newer.
 3. Swift Package Manager will automatically resolve the `KeyboardShortcuts` dependency.
 4. Select your Mac as the destination and run (`⌘ + R`).
 5. **Permissions**: On its first run, the app will prompt you to grant **Accessibility** permissions via System Settings. This is strictly required to monitor global keyboard shortcuts. (macOS 14+ may also require *Input Monitoring* depending on the shortcut).

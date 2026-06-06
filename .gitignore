@@ -21,3 +21,6 @@ Package.resolved
 
 # AppCode
 .idea/
+
+# Claude Code
+CLAUDE.md
